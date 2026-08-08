@@ -66,6 +66,7 @@ class Session:
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
     last_compacted: int = 0  # messages[:last_compacted] were already summarized
+    access_mode: str | None = None  # workspace scope override: "restricted" | "full" | None
 
     def to_dict(self) -> dict:
         return {
@@ -75,6 +76,7 @@ class Session:
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "last_compacted": self.last_compacted,
+            "access_mode": self.access_mode,
         }
 
     def context_window(self, max_chars: int) -> list["Message"]:
@@ -97,6 +99,7 @@ class Session:
             created_at=data.get("created_at", 0.0),
             updated_at=data.get("updated_at", 0.0),
             last_compacted=data.get("last_compacted", 0),
+            access_mode=data.get("access_mode"),
         )
 
     @staticmethod

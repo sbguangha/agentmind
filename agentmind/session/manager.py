@@ -78,6 +78,7 @@ class SessionManager:
                 "message_count": len(s.messages),
                 "created_at": s.created_at,
                 "updated_at": s.updated_at,
+                "access_mode": s.access_mode,
             }
             for s in sorted(self._sessions.values(), key=lambda s: s.updated_at, reverse=True)
         ]

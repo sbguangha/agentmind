@@ -47,6 +47,34 @@ class Settings(BaseModel):
     enable_web: bool = Field(default=True, description="Enable web search / fetch tools")
     workspace: str = Field(default="./workspace", description="Filesystem tools are confined to this dir")
 
+    # ---- Search (web_search) ---------------------------------------------
+    search_provider: str = Field(
+        default="bing",
+        description="Search engine: bing (no key, works in CN) | duckduckgo | bocha | "
+        "volcengine | tavily | brave | serper | jina",
+    )
+    search_api_key: str = Field(
+        default="", description="API key for key-based search providers (env AGENTMIND_SEARCH_API_KEY)"
+    )
+    search_max_results: int = Field(default=5, description="Results returned per search")
+
+    # ---- Workspace access (permission scope) -----------------------------
+    workspace_access: str = Field(
+        default="restricted",
+        description="'restricted' 工具只能访问工作区 | 'full' 可访问整个文件系统（危险）",
+    )
+
+    # ---- Network security (SSRF) -----------------------------------------
+    network_allow_loopback: bool = Field(
+        default=False,
+        description="Allow web_fetch to localhost/private addresses (SSRF risk)",
+    )
+
+    # ---- Web access control ----------------------------------------------
+    web_token: str = Field(
+        default="", description="If set, the WebUI/API requires ?token=<this> (nanobot-style gate)"
+    )
+
     # ---- Human-in-the-loop approval --------------------------------------
     approval_mode: str = Field(
         default="ask_risky",
@@ -108,6 +136,10 @@ class Settings(BaseModel):
             "AGENTMIND_PORT": "port",
             "AGENTMIND_ALLOW_SHELL": "allow_shell",
             "AGENTMIND_ENABLE_WEB": "enable_web",
+            "AGENTMIND_SEARCH_API_KEY": "search_api_key",
+            "AGENTMIND_SEARCH_PROVIDER": "search_provider",
+            "AGENTMIND_WORKSPACE_ACCESS": "workspace_access",
+            "AGENTMIND_WEB_TOKEN": "web_token",
         }
         for env_name, field_name in env_map.items():
             raw = os.environ.get(env_name)

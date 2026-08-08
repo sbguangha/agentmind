@@ -69,6 +69,7 @@ def _run_serve(settings: Settings) -> None:
             settings,
             compressor=runtime.compressor,
             consolidator=runtime.consolidator,
+            scope_resolver=runtime.scope_resolver,
         )
 
         server = AgentServer(runtime, bus, loop)

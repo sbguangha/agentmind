@@ -2,12 +2,15 @@
 
 Path confinement is a deliberate security boundary: every path is resolved
 and verified to stay inside the configured workspace, so the model can never
-touch files outside its sandbox.
+touch files outside its sandbox — unless the session's workspace scope is
+``full`` (see ``security/workspace_access.py``), which grants whole-machine
+access and is the dangerous-but-explicit opt-in.
 """
 from __future__ import annotations
 
 from pathlib import Path
 
+from agentmind.security.workspace_access import current_scope
 from agentmind.tools.base import Tool, ToolResult
 
 
@@ -19,7 +22,14 @@ class Filesystem:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def resolve(self, path: str) -> Path:
-        """Resolve a user-supplied path and verify it stays inside root."""
+        """Resolve a user-supplied path, honoring the current workspace scope."""
+        scope = current_scope()
+        if scope is not None and not scope.restrict:
+            # full access: allow absolute paths or paths relative to the CWD
+            candidate = Path(path).expanduser()
+            if not candidate.is_absolute():
+                candidate = Path.cwd() / candidate
+            return candidate.resolve()
         candidate = (self.root / path).resolve()
         if not candidate.is_relative_to(self.root):
             raise ValueError(f"路径越界: {path} (仅允许访问 {self.root})")

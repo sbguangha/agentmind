@@ -22,6 +22,9 @@
 | 🔐 **人工审批 Human-in-the-loop** | 危险工具(写文件/Shell)不能无声执行 | `core/permissions.py` 审批门控 + WebUI 审批弹窗，超时/拒绝即中止 |
 | 👥 **子代理委派 Subagent** | 复杂任务要"拆分"，而不是塞爆父上下文 | `core/subagent.py` 隔离上下文 + `delegate` 工具 + 深度/并发护栏 |
 | 📦 **上下文压缩/巩固 Consolidation** | 记忆不能只靠"裁剪丢弃"，要"压缩保鲜" | `core/compressor.py` LLM 摘要替代旧消息 + `core/consolidator.py` 长期记忆批量归纳 |
+| 🌐 **多引擎搜索 Web Search** | 单一搜索引擎被墙/限流就废了 | `tools/web.py` 多 Provider（Bing RSS 默认，国内可用）自动降级 |
+| 🛡️ **SSRF 网络防护** | 抓取工具不能被利用打内网/云元数据 | `security/network.py` 私有网段拦截 + 每跳重定向校验 |
+| 🗂️ **工作区作用域 Workspace Scope** | 权限要能按会话收紧/放开 | `security/workspace_access.py` restricted/full 模式 + 每会话覆盖 |
 
 - **技术栈**：Python 3.11+ · asyncio · aiohttp · pydantic（仅 3 个运行时依赖）
 - **模型**：任何 OpenAI 兼容接口（OpenAI / DeepSeek / Ollama / vLLM / Kimi...），直接走 HTTP 协议实现，不依赖 SDK
@@ -100,7 +103,15 @@ export AGENTMIND_MODEL=deepseek-chat
   "approval_mode": "ask_risky",
   // 子代理
   "max_subagent_depth": 2,
-  "max_concurrent_subagents": 4
+  "max_concurrent_subagents": 4,
+  // 搜索：bing(默认,无需key) | duckduckgo | bocha | volcengine | tavily | brave | serper
+  "search_provider": "bing",
+  "search_api_key": "",
+  // 权限：workspace 作用域
+  "workspace_access": "restricted",   // restricted | full
+  // 安全
+  "network_allow_loopback": false,    // 允许抓取内网(SSRF风险)
+  "web_token": ""                     // 设置后 WebUI 需 ?token=xxx
 }
 ```
 
@@ -128,6 +139,8 @@ uv run agentmind --port 9000          # 自定义端口
 | 跨会话长期记忆 | 隔天再开新会话问 `你记得我吗？` |
 | 🔐 工具审批 | `帮我在 workspace 里创建 config.json，写入一份项目配置`（触发审批弹窗，演示拒绝后模型如何应对） |
 | 👥 子代理委派 | `用子代理独立调研一下"ReAct 和 Chain-of-Thought 的区别"，把结论汇报给我`（子代理卡片独立运行） |
+| 🌐 网页搜索 | `搜索 python asyncio 的官方文档地址`（Bing 多引擎自动降级，无需 key） |
+| 🛡️ SSRF 防护 | 让 agent `抓取 http://127.0.0.1:8765/api/sessions`（会被拦截并如实说明） |
 
 ---
 
@@ -163,6 +176,9 @@ agentmind/
 │   ├── store.py          # SQLite 记忆存储（异步安全）
 │   ├── embeddings.py     # embedding 抽象
 │   └── long_term.py      # 语义/关键词双模式检索
+├── security/
+│   ├── network.py        # 🛡️ SSRF 防护：私有网段拦截 + 重定向校验
+│   └── workspace_access.py # 🗂️ workspace 作用域(restricted/full) + contextvar 绑定
 ├── session/
 │   ├── types.py          # Message / Session 模型（含压缩游标）
 │   └── manager.py        # 会话持久化 + 上下文裁剪
@@ -200,15 +216,25 @@ agentmind/
 - **短期压缩**：历史超预算时，不再丢弃旧消息，而是让 LLM 把最旧的一批压成一段摘要消息（`Compressor`，带压缩游标 `last_compacted` 避免重复压缩）。
 - **长期巩固**：episode 记忆积累到 `consolidation_batch` 条后，批量归纳成更高层的 `summary` 记忆并删除原始条目（`MemoryConsolidator`），记忆库因此"越用越有条理"而不是无限膨胀。
 
-### 8. 全链路可测试
-41 个测试覆盖记忆检索、路径安全、ReAct 循环护栏、审批状态机（先到/后到/超时）、子代理深度护栏、压缩与巩固、WebSocket 端到端（含 mock OpenAI 服务）。CI 一条命令跑通。
+### 8. 搜索多引擎 + SSRF 防护——能感知世界，且不被世界反噬
+- **搜索**：借鉴 nanobot 的多 Provider 架构。默认 Bing RSS（无需 key、国内可用），自动降级链 `配置引擎 → bing → duckduckgo → 有 key 的引擎(博查/火山/Tavily/Brave/Serper)`。单一引擎被墙/限流不会让功能失效。
+- **抓取**：`fetch_webpage` 带完整 SSRF 防护——每次请求和每次重定向都校验目标 IP，拒绝 RFC1918/环回/链路本地/云元数据网段；`network_allow_loopback` 显式开启才能抓内网。
+
+### 9. 工作区作用域——权限按会话收紧/放开
+每会话一个 `access_mode`：`restricted`（默认，工具只能碰 workspace）或 `full`（危险，可读写全盘）。作用域经 contextvar 在每轮绑定，文件系统工具据此决定自己的沙箱边界，WebUI 右上角可即时切换。
+
+### 10. Web token——网关级访问控制
+设置 `web_token` 后，WebUI 与所有 API 都要求 `?token=xxx`，静态壳页公开、数据通道(WS/API)强制鉴权，防止局域网内被他人操作你的 Agent。
+
+### 11. 全链路可测试
+62 个测试覆盖记忆检索、路径安全、ReAct 循环护栏、审批状态机（先到/后到/超时）、子代理深度护栏、压缩与巩固、SSRF 拦截、搜索解析与降级、WebSocket 端到端（含 mock OpenAI 服务）。CI 一条命令跑通。
 
 ---
 
 ## 测试与代码质量
 
 ```bash
-uv run pytest -q          # 41 个测试
+uv run pytest -q          # 62 个测试
 uv run ruff check .       # 代码规范
 ```
 
@@ -236,7 +262,13 @@ uv run ruff check .       # 代码规范
 对个人 Agent 的体量（数千条记忆），SQLite + 内存余弦计算完全够用且零运维。这体现了"按规模选技术"的工程判断——不是越重越好。
 
 **Q: 危险工具怎么拦？**
-三层：① 文件/Shell 默认有路径/命令约束；② `approval_mode`（`auto`/`ask_risky`/`ask_all`）决定哪些工具要人工审批，审批弹窗在 WebUI 直接点允许/拒绝，超时自动拒绝；③ Shell 工具本身默认 `allow_shell=false` 关闭。
+四层：① 文件/Shell 默认有路径/命令约束；② `approval_mode`（`auto`/`ask_risky`/`ask_all`）决定哪些工具要人工审批，审批弹窗在 WebUI 直接点允许/拒绝，超时自动拒绝；③ Shell 工具本身默认 `allow_shell=false` 关闭；④ 工作区作用域（restricted/full）决定文件工具的沙箱边界。
+
+**Q: 网页搜索怎么做到的？为什么之前失败？**
+多引擎架构。之前只用了 DuckDuckGo，它在国内被墙（返回 202 挑战页）。现在默认走 Bing RSS（无需 key、国内可用），失败自动降级到 DDG/博查/火山/Tavily 等。国内无 key 也能直接搜。
+
+**Q: 抓取网页安全吗？**
+`fetch_webpage` 内置 SSRF 防护（`security/network.py`）：拒绝私网/环回/云元数据地址，每个重定向跳都重新校验，`network_allow_loopback` 关闭时抓 `127.0.0.1` 会被明确拦截。
 
 **Q: 子代理会不会无限递归？**
 不会。`SubagentManager` 用 contextvar 追踪委派深度，超过 `max_subagent_depth`（默认 2）直接返回"层级已达上限"错误，同时用信号量限制并发数。
@@ -245,7 +277,7 @@ uv run ruff check .       # 代码规范
 先触发 `Compressor`：让 LLM 把最旧的一批消息压成摘要（带 `last_compacted` 游标，只压缩一次），而不是直接丢弃。如果连摘要都失败，才回退到原来的裁剪。
 
 **Q: 代码参考？**
-架构思想参考了开源项目 [nanobot](https://github.com/HKUDS/nanobot)（MIT License，消息总线/Agent 循环的设计启发），但本项目代码为独立实现，依赖面更小、更聚焦四大核心能力 + 工程化进阶特性。
+架构思想参考了开源项目 [nanobot](https://github.com/HKUDS/nanobot)（MIT License）：消息总线/Agent 循环/多引擎搜索/workspace 作用域/SSRF 防护的设计启发，但本项目代码为独立实现，依赖面更小、更聚焦。
 
 ---
 

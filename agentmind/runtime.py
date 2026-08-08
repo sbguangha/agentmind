@@ -11,6 +11,7 @@ from agentmind.memory.embeddings import Embedder
 from agentmind.memory.long_term import LongTermMemory
 from agentmind.memory.store import MemoryStore
 from agentmind.providers.openai_compat import OpenAICompatProvider
+from agentmind.security.workspace_access import WorkspaceScopeResolver
 from agentmind.session.manager import SessionManager
 from agentmind.tools.datetime_tool import GetCurrentTimeTool
 from agentmind.tools.delegate_tool import DelegateTool
@@ -43,6 +44,12 @@ class AgentRuntime:
         # human-in-the-loop approval
         self.approvals = ApprovalManager(timeout=settings.approval_timeout)
         self.gate = build_approval_gate(settings, self.approvals)
+
+        # permission boundary (workspace access scope)
+        self.scope_resolver = WorkspaceScopeResolver(
+            settings.resolved_workspace,
+            default_restrict=settings.workspace_access == "restricted",
+        )
 
         # tools (delegate is registered after the runner exists)
         self.registry = self._build_registry(settings)
@@ -80,7 +87,14 @@ class AgentRuntime:
         if settings.allow_shell:
             registry.register(ShellTool(str(settings.resolved_workspace)))
         if settings.enable_web:
-            registry.register_all(WebSearchTool(), WebFetchTool())
+            registry.register_all(
+                WebSearchTool(
+                    provider=settings.search_provider,
+                    api_key=settings.search_api_key,
+                    max_results=settings.search_max_results,
+                ),
+                WebFetchTool(allow_loopback=settings.network_allow_loopback),
+            )
         return registry
 
     def use_local_approvals(self) -> None:

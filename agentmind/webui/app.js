@@ -10,6 +10,7 @@ const els = {
   statusText: document.getElementById("status-text"),
   sessionName: document.getElementById("current-session"),
   meta: document.getElementById("meta"),
+  accessSelect: document.getElementById("access-select"),
   memoryBtn: document.getElementById("memory-btn"),
   memoryDrawer: document.getElementById("memory-drawer"),
   memoryBody: document.getElementById("memory-body"),
@@ -21,6 +22,11 @@ const els = {
   approvalAllow: document.getElementById("approval-allow"),
   approvalDeny: document.getElementById("approval-deny"),
 };
+
+// optional web token (server gate): ?token=xxx in the URL
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+const authSuffix = TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "";
+function api(path) { return `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(TOKEN)}`; }
 
 let ws = null;
 let sessionId = null;
@@ -34,7 +40,7 @@ let currentApproval = null;
 /* ---------------- WebSocket ---------------- */
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  ws = new WebSocket(`${proto}://${location.host}/ws`);
+  ws = new WebSocket(`${proto}://${location.host}/ws${authSuffix}`);
   setStatus("connecting");
 
   ws.onopen = () => {
@@ -238,6 +244,7 @@ function renderSessions() {
   }
   const cur = sessions.find((s) => s.id === sessionId);
   els.sessionName.textContent = cur ? cur.title : "新对话";
+  els.accessSelect.value = cur && cur.access_mode ? cur.access_mode : "restricted";
 }
 
 function switchSession(id) {
@@ -252,9 +259,9 @@ async function renderHistory() {
   currentAssistantEl = null;
   toolCards = [];
   if (!sessionId) return;
-  try {
-    const res = await fetch(`/api/sessions/${sessionId}/messages`);
-    const { messages } = await res.json();
+    try {
+      const res = await fetch(api(`/api/sessions/${sessionId}/messages`));
+      const { messages } = await res.json();
     for (const m of messages) {
       if (m.role === "user") {
         const el = document.createElement("div");
@@ -302,7 +309,7 @@ function autoResize() {
 async function openMemory() {
   els.memoryDrawer.classList.remove("hidden");
   try {
-    const res = await fetch("/api/memory");
+    const res = await fetch(api("/api/memory"));
     const data = await res.json();
     els.memoryBody.innerHTML = "";
     const head = document.createElement("div");
@@ -354,8 +361,21 @@ els.memoryBtn.onclick = openMemory;
 els.memoryClose.onclick = () => els.memoryDrawer.classList.add("hidden");
 els.memoryClear.onclick = async () => {
   if (!confirm("确定清空所有长期记忆？")) return;
-  await fetch("/api/memory", { method: "DELETE" });
+  await fetch(api("/api/memory"), { method: "DELETE" });
   openMemory();
+};
+
+/* ---------------- Access mode (workspace permission) ---------------- */
+els.accessSelect.onchange = async (e) => {
+  if (!sessionId) return;
+  const mode = e.target.value;
+  await fetch(api(`/api/sessions/${sessionId}/access`), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ access_mode: mode }),
+  });
+  const cur = sessions.find((s) => s.id === sessionId);
+  if (cur) cur.access_mode = mode;
 };
 
 connect();

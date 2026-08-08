@@ -33,7 +33,16 @@
     <main class="main">
       <header class="header">
         <div id="current-session" class="session-name">新对话</div>
-        <div class="meta" id="meta">model: --</div>
+        <div class="header-right">
+          <label class="access-label" title="会话的 workspace 权限作用域">
+            🔐 访问
+            <select id="access-select">
+              <option value="restricted">仅工作区</option>
+              <option value="full">全盘(危险)</option>
+            </select>
+          </label>
+          <div class="meta" id="meta">model: --</div>
+        </div>
       </header>
 
       <div id="chat" class="chat"></div>

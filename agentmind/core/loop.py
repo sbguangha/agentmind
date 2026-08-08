@@ -21,6 +21,11 @@ from agentmind.core.compressor import Compressor
 from agentmind.core.consolidator import MemoryConsolidator
 from agentmind.core.runner import AgentRunner
 from agentmind.memory.long_term import LongTermMemory
+from agentmind.security.workspace_access import (
+    WorkspaceScopeResolver,
+    bind_scope,
+    reset_scope,
+)
 from agentmind.session.manager import SessionManager
 from agentmind.session.types import Message
 
@@ -37,6 +42,7 @@ class AgentLoop:
         settings: Settings,
         compressor: Compressor | None = None,
         consolidator: MemoryConsolidator | None = None,
+        scope_resolver: WorkspaceScopeResolver | None = None,
     ) -> None:
         self._bus = bus
         self._runner = runner
@@ -45,6 +51,7 @@ class AgentLoop:
         self._settings = settings
         self._compressor = compressor
         self._consolidator = consolidator
+        self._scope_resolver = scope_resolver
         self._locks: dict[str, asyncio.Lock] = {}
         self._stop = asyncio.Event()
 
@@ -74,13 +81,24 @@ class AgentLoop:
                 )
 
             try:
-                # compress short-term history before the turn (old -> summary)
-                if self._compressor is not None:
-                    compressed = await self._compressor.maybe_compress(session)
-                    if compressed:
-                        await self._sessions.save(session)
+                # bind the session's workspace scope (permission boundary)
+                scope = (
+                    self._scope_resolver.resolve(session.access_mode)
+                    if self._scope_resolver is not None
+                    else None
+                )
+                scope_token = bind_scope(scope) if scope is not None else None
+                try:
+                    # compress short-term history before the turn (old -> summary)
+                    if self._compressor is not None:
+                        compressed = await self._compressor.maybe_compress(session)
+                        if compressed:
+                            await self._sessions.save(session)
 
-                answer = await self._runner.run_turn(session, msg.text, emit)
+                    answer = await self._runner.run_turn(session, msg.text, emit)
+                finally:
+                    if scope_token is not None:
+                        reset_scope(scope_token)
                 await self._persist_turn(session, msg.text, answer)
                 await emit("done", {"answer": answer})
             except Exception as exc:  # noqa: BLE001 - surface failures to the UI
