@@ -75,6 +75,8 @@ class AgentRunner:
         prompt = build_system_prompt(self._settings, memories, prompt=system_prompt)
         messages: list[dict] = [{"role": "system", "content": prompt}]
         for msg in session.context_window(self._settings.max_history_chars):
+            if msg.attachment:  # UI-only (voice bubbles etc.) — never sent to the model
+                continue
             messages.append(msg.to_api())
         messages.append({"role": "user", "content": user_text})
 

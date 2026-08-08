@@ -2,16 +2,19 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 from aiohttp import web
 
-from agentmind.bus.queue import InboundMessage, MessageBus
+from agentmind.bus.queue import InboundMessage, MessageBus, OutboundMessage
 from agentmind.core.loop import AgentLoop
 from agentmind.runtime import AgentRuntime
+from agentmind.session.types import Message
 
 _WEBUI_DIR = Path(__file__).resolve().parent.parent / "webui"
 
@@ -26,6 +29,8 @@ class AgentServer:
         self._clients: dict[str, web.WebSocketResponse] = {}
         self._runner: web.AppRunner | None = None
         self._fanout_task: asyncio.Task | None = None
+        self._audio_dir = runtime.settings.resolved_data_dir / "audio"
+        self._audio_dir.mkdir(parents=True, exist_ok=True)
 
     # ------------------------------------------------------------------
     async def start(self, host: str, port: int) -> int:
@@ -65,6 +70,7 @@ class AgentServer:
         app.router.add_delete("/api/sessions/{sid}", self._delete_session)
         app.router.add_get("/api/memory", self._list_memory)
         app.router.add_delete("/api/memory", self._clear_memory)
+        app.router.add_get("/api/audio/{name}", self._audio_file)
         app.router.add_post("/v1/chat/completions", self._openai_completions)
 
     async def _index(self, request: web.Request) -> web.Response:
@@ -74,9 +80,39 @@ class AgentServer:
     async def _fanout(self) -> None:
         while True:
             msg = await self._bus.receive_outbound()
+            if msg.event == "attachment" and msg.payload.get("mime", "").startswith("audio/"):
+                await self._persist_audio(msg)
             ws = self._clients.get(msg.session_id)
             if ws is not None and not ws.closed:
                 await ws.send_json({"event": msg.event, "payload": msg.payload})
+
+    async def _persist_audio(self, msg: OutboundMessage) -> None:
+        """Save attachment audio to disk and persist a UI-only voice message."""
+        try:
+            data = base64.b64decode(msg.payload.get("data", ""))
+        except Exception:  # noqa: BLE001 - malformed audio must not break the loop
+            return
+        if not data:
+            return
+        name = f"{uuid.uuid4().hex[:12]}.mp3"
+        (self._audio_dir / name).write_bytes(data)
+
+        url = f"/api/audio/{name}"
+        msg.payload = {
+            "mime": msg.payload.get("mime", "audio/mpeg"),
+            "url": url,
+            "label": msg.payload.get("label", ""),
+        }
+        session = self._runtime.sessions.get(msg.session_id)
+        if session is not None:
+            await self._runtime.sessions.append(
+                session,
+                Message(
+                    role="assistant",
+                    content="",
+                    attachment={"kind": "voice", "url": url, "text": msg.payload["label"]},
+                ),
+            )
 
     # ---- WebSocket -----------------------------------------------------
     async def _ws_handler(self, request: web.Request) -> web.WebSocketResponse:
@@ -171,6 +207,16 @@ class AgentServer:
     async def _clear_memory(self, request: web.Request) -> web.Response:
         count = await self._runtime.memory.clear()
         return _json({"cleared": count})
+
+    # ---- REST: audio ---------------------------------------------------
+    async def _audio_file(self, request: web.Request) -> web.Response:
+        name = request.match_info["name"]
+        if not name.endswith(".mp3") or ".." in name or "/" in name:
+            return _json({"error": "not found"}, status=404)
+        path = self._audio_dir / name
+        if not path.is_file():
+            return _json({"error": "not found"}, status=404)
+        return web.FileResponse(path)
 
     # ---- OpenAI-compatible endpoint -----------------------------------
     async def _openai_completions(self, request: web.Request) -> web.Response:

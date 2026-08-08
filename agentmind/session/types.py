@@ -17,6 +17,7 @@ class Message:
     name: str | None = None  # tool name for "tool" role
     tool_call_id: str | None = None  # for "tool" role replies
     tool_calls: list[ToolCall] | None = None  # for "assistant" role
+    attachment: dict | None = None  # UI-only payload (e.g. {"kind":"voice","url":...})
     timestamp: float = field(default_factory=time.time)
 
     def to_api(self) -> dict:
@@ -43,6 +44,8 @@ class Message:
             data["name"] = self.name
         if self.tool_call_id:
             data["tool_call_id"] = self.tool_call_id
+        if self.attachment:
+            data["attachment"] = self.attachment
         return data
 
     @classmethod
@@ -52,6 +55,7 @@ class Message:
             content=data.get("content", ""),
             name=data.get("name"),
             tool_call_id=data.get("tool_call_id"),
+            attachment=data.get("attachment"),
             timestamp=data.get("timestamp", 0.0),
         )
 

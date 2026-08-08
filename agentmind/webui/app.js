@@ -107,7 +107,7 @@ function handleEvent(event, payload) {
       break;
     case "attachment":
       if (payload.mime && payload.mime.startsWith("audio/")) {
-        addVoiceBubble(payload.label || "", payload.mime, payload.data);
+        addVoiceBubble(payload.label || "", payload.mime, payload.url || "");
       }
       break;
     case "approval_request":
@@ -225,12 +225,12 @@ function finalizeSubagent(result, success) {
 /* ---------------- Voice bubble (WeChat style) ---------------- */
 let currentVoice = null;
 
-function addVoiceBubble(label, mime, b64) {
+function addVoiceBubble(label, mime, url) {
   const el = document.createElement("div");
   el.className = "msg assistant";
   el.innerHTML = `
     <span class="role">AgentMind · 语音</span>
-    <div class="voice-bubble" data-src="data:${mime};base64,${b64}" title="${escapeHtml(label)}">
+    <div class="voice-bubble" data-src="${url}" title="${escapeHtml(label)}">
       <span class="vb-play">▶</span>
       <span class="vb-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
       <span class="vb-duration">0:00</span>
@@ -328,7 +328,9 @@ async function renderHistory() {
       const res = await fetch(api(`/api/sessions/${sessionId}/messages`));
       const { messages } = await res.json();
     for (const m of messages) {
-      if (m.role === "user") {
+      if (m.attachment) {
+        addVoiceBubble(m.attachment.text || "", "audio/mpeg", m.attachment.url);
+      } else if (m.role === "user") {
         const el = document.createElement("div");
         el.className = "msg user";
         el.innerHTML = `<span class="role">你</span><div class="bubble"></div>`;
