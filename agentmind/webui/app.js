@@ -36,6 +36,7 @@ let thinkingEl = null;
 let toolCards = [];
 let approvalQueue = [];
 let currentApproval = null;
+let needsHistoryRender = true;
 
 /* ---------------- WebSocket ---------------- */
 function connect() {
@@ -72,7 +73,12 @@ function handleEvent(event, payload) {
       sessions = payload.sessions;
       els.meta.textContent = `model: ${payload.model}`;
       renderSessions();
-      renderHistory();
+      // re-render history only on first load / explicit session switch; a
+      // refreshSessions() welcome must NOT wipe ephemeral UI (voice bubbles)
+      if (needsHistoryRender) {
+        renderHistory();
+        needsHistoryRender = false;
+      }
       break;
     case "thinking_start":
       hideThinking();
@@ -307,6 +313,7 @@ function renderSessions() {
 
 function switchSession(id) {
   sessionId = id;
+  needsHistoryRender = false; // we render right here; the welcome must not wipe it again
   ws.send(JSON.stringify({ type: "hello", session_id: id }));
   renderSessions();
   renderHistory();
@@ -405,6 +412,7 @@ els.approvalAllow.onclick = () => respondApproval(true);
 els.approvalDeny.onclick = () => respondApproval(false);
 els.newChat.onclick = () => {
   sessionId = null;
+  needsHistoryRender = false; // chat already cleared below; welcome must not re-render
   els.chat.innerHTML = "";
   els.sessionName.textContent = "新对话";
   currentAssistantEl = null;
