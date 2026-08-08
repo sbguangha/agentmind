@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentMind</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo">🐈</span>
+        <div class="brand-text">
+          <strong>AgentMind</strong>
+          <span class="tagline">Perception · ReAct · Tools · Memory</span>
+        </div>
+      </div>
+
+      <button id="new-chat" class="btn primary">+ 新对话</button>
+
+      <div class="section-title">会话历史（短期记忆）</div>
+      <ul id="session-list" class="session-list"></ul>
+
+      <div class="sidebar-footer">
+        <button id="memory-btn" class="btn ghost">🧠 长期记忆</button>
+        <div class="status" id="status"><span class="dot"></span><span id="status-text">连接中...</span></div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="header">
+        <div id="current-session" class="session-name">新对话</div>
+        <div class="meta" id="meta">model: --</div>
+      </header>
+
+      <div id="chat" class="chat"></div>
+
+      <!-- Memory drawer -->
+      <div id="memory-drawer" class="drawer hidden">
+        <div class="drawer-head">
+          <span>长期记忆（SQLite + 语义检索）</span>
+          <button id="memory-clear" class="btn ghost small">清空</button>
+          <button id="memory-close" class="btn ghost small">关闭</button>
+        </div>
+        <div id="memory-body" class="drawer-body"></div>
+      </div>
+
+      <div class="composer">
+        <textarea id="input" rows="1" placeholder="输入消息...（例如：现在几点了？ / 搜索 python asyncio 的教程 / 记住我喜欢简洁的回答）"></textarea>
+        <button id="send" class="btn primary">发送</button>
+      </div>
+    </main>
+  </div>
+
+  <!-- Approval modal -->
+  <div id="approval-modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title">🔒 需要你的审批</div>
+      <div class="modal-tool" id="approval-tool"></div>
+      <div class="modal-desc">该工具会修改真实状态，是否允许 AgentMind 执行？</div>
+      <div class="modal-pending" id="approval-pending"></div>
+      <div class="modal-actions">
+        <button id="approval-deny" class="btn ghost">拒绝</button>
+        <button id="approval-allow" class="btn primary">允许</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
