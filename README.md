@@ -25,6 +25,7 @@
 | 🌐 **多引擎搜索 Web Search** | 单一搜索引擎被墙/限流就废了 | `tools/web.py` 多 Provider（Bing RSS 默认，国内可用）自动降级 |
 | 🛡️ **SSRF 网络防护** | 抓取工具不能被利用打内网/云元数据 | `security/network.py` 私有网段拦截 + 每跳重定向校验 |
 | 🗂️ **工作区作用域 Workspace Scope** | 权限要能按会话收紧/放开 | `security/workspace_access.py` restricted/full 模式 + 每会话覆盖 |
+| 🔌 **MCP 客户端** | 消费外部 MCP Server（如 voice_mcp 语音） | `tools/mcp_client.py` 把 MCP 工具包装成 `mcp_<server>_<tool>` 原生工具 |
 
 - **技术栈**：Python 3.11+ · asyncio · aiohttp · pydantic（仅 3 个运行时依赖）
 - **模型**：任何 OpenAI 兼容接口（OpenAI / DeepSeek / Ollama / vLLM / Kimi...），直接走 HTTP 协议实现，不依赖 SDK
@@ -111,7 +112,16 @@ export AGENTMIND_MODEL=deepseek-chat
   "workspace_access": "restricted",   // restricted | full
   // 安全
   "network_allow_loopback": false,    // 允许抓取内网(SSRF风险)
-  "web_token": ""                     // 设置后 WebUI 需 ?token=xxx
+  "web_token": "",                    // 设置后 WebUI 需 ?token=xxx
+  // MCP 客户端：外部 MCP Server -> 原生工具 (mcp_<name>_<tool>)
+  "mcp_servers": {
+    "voice": {
+      "command": "uv",
+      "args": ["run", "--project", "D:/1_code/agent_forJD/voice_mcp", "voice-mcp"],
+      "env": { "PYTHONIOENCODING": "utf-8" },
+      "tool_timeout": 60
+    }
+  }
 }
 ```
 
@@ -278,6 +288,9 @@ uv run ruff check .       # 代码规范
 
 **Q: 代码参考？**
 架构思想参考了开源项目 [nanobot](https://github.com/HKUDS/nanobot)（MIT License）：消息总线/Agent 循环/多引擎搜索/workspace 作用域/SSRF 防护的设计启发，但本项目代码为独立实现，依赖面更小、更聚焦。
+
+**Q: 能接入外部 MCP Server 吗？**
+能。`tools/mcp_client.py` 是 MCP 客户端：配置 `mcp_servers` 后启动时连接服务器，工具注册为 `mcp_<server>_<tool>` 原生工具。仓库里就带了一个可直接消费的示例——`voice_mcp/`（edge-tts 语音合成）。这样你的 Agent **既能被 MCP 扩展，也能反过来消费 MCP 服务**。
 
 ---
 

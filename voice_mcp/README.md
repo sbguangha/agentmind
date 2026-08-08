@@ -31,9 +31,28 @@ edge-tts 直连 `wss://speech.platform.bing.com/`（免费、无需 key），但
 2. **自动重试已内置**：网络抖动时工具会自动重试一次（`_MAX_ATTEMPTS=2`）。
 3. **换用国内可达的 TTS**：如果代理也连不上，可把 `communicate_factory` 替换为国内 TTS（如火山/讯飞，需 key），工具接口不变。
 
+## 接入 AgentMind（推荐）
+
+AgentMind 自带 MCP 客户端（`agentmind/tools/mcp_client.py`）。在 `data/config.json` 添加：
+
+```json
+{
+  "mcp_servers": {
+    "voice": {
+      "command": "uv",
+      "args": ["run", "--project", "D:/你的路径/voice_mcp", "voice-mcp"],
+      "env": { "PYTHONIOENCODING": "utf-8" },
+      "tool_timeout": 60
+    }
+  }
+}
+```
+
+启动后工具以 `mcp_voice_voice_speak` 出现在 AgentMind 里，对 Agent 说"用语音回答我"即可。
+
 ## 接入 Nanobot
 
-在 `~/.nanobot/config.json` 添加（工具将以 `mcp_voice_voice_speak` 暴露给模型）：
+（如果你在用 nanobot）在 `~/.nanobot/config.json` 添加，工具以 `mcp_voice_voice_speak` 暴露：
 
 ```json
 {
@@ -49,8 +68,6 @@ edge-tts 直连 `wss://speech.platform.bing.com/`（免费、无需 key），但
   }
 }
 ```
-
-> 然后对 Agent 说"用语音回答我"，模型就会调用 `mcp_voice_voice_speak`。
 
 ## 工具定义
 

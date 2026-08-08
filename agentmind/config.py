@@ -15,6 +15,16 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class MCPServerConfig(BaseModel):
+    """Connection settings for an external MCP server (stdio)."""
+
+    command: str = ""
+    args: list[str] = Field(default_factory=list)
+    env: dict[str, str] = Field(default_factory=dict)
+    cwd: str = ""
+    tool_timeout: float = 60.0
+
+
 class Settings(BaseModel):
     """Runtime settings for the agent."""
 
@@ -73,6 +83,12 @@ class Settings(BaseModel):
     # ---- Web access control ----------------------------------------------
     web_token: str = Field(
         default="", description="If set, the WebUI/API requires ?token=<this> (nanobot-style gate)"
+    )
+
+    # ---- MCP client (external MCP servers) -------------------------------
+    mcp_servers: dict[str, MCPServerConfig] = Field(
+        default_factory=dict,
+        description="name -> MCP server config (stdio). Tools exposed as mcp_<name>_<tool>",
     )
 
     # ---- Human-in-the-loop approval --------------------------------------

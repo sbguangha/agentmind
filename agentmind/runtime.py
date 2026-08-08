@@ -21,6 +21,7 @@ from agentmind.tools.filesystem import (
     ReadFileTool,
     WriteFileTool,
 )
+from agentmind.tools.mcp_client import MCPClientManager
 from agentmind.tools.memory_tool import RecallTool, RememberTool
 from agentmind.tools.registry import ToolRegistry
 from agentmind.tools.shell import ShellTool
@@ -73,6 +74,15 @@ class AgentRuntime:
         self.compressor = Compressor(self.provider, settings)
         self.consolidator = MemoryConsolidator(self.provider, self.memory, settings)
 
+        # MCP client (external MCP servers -> native tools)
+        self.mcp = MCPClientManager(settings.mcp_servers)
+
+    async def startup(self) -> None:
+        """Connect MCP servers and register their tools (call before the loop runs)."""
+        if self.mcp.enabled:
+            for tool in await self.mcp.connect_all():
+                self.registry.register(tool)
+
     def _build_registry(self, settings: Settings) -> ToolRegistry:
         registry = ToolRegistry()
         fs = Filesystem(settings.resolved_workspace)
@@ -103,4 +113,5 @@ class AgentRuntime:
 
     async def shutdown(self) -> None:
         self.approvals.cancel_all()
+        await self.mcp.close()
         await self.provider.close()

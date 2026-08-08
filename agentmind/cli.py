@@ -60,6 +60,7 @@ def _run_serve(settings: Settings) -> None:
         from agentmind.api.server import AgentServer
 
         runtime = AgentRuntime(settings)
+        await runtime.startup()
         bus = MessageBus()
         loop = AgentLoop(
             bus,
@@ -107,6 +108,7 @@ def _run_chat(settings: Settings) -> None:
 
     async def entry() -> None:
         runtime = AgentRuntime(settings)
+        await runtime.startup()
         runtime.use_local_approvals()
         session: Session = runtime.sessions.create()
 
