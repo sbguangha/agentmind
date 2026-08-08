@@ -79,12 +79,19 @@ AgentMind 自带 MCP 客户端（`agentmind/tools/mcp_client.py`）。在 `data/
     "type": "object",
     "properties": {
       "text":  { "type": "string", "description": "需要朗读的文本（最长 1000 字符）" },
-      "voice": { "type": "string", "description": "音色，默认 zh-CN-XiaoxiaoNeural" }
+      "voice": { "type": "string", "description": "音色，默认 zh-CN-XiaoxiaoNeural" },
+      "play":  { "type": "boolean", "description": "是否在本机播放（默认 true；false 时仅返回音频给客户端）" }
     },
     "required": ["text"]
   }
 }
 ```
+
+返回内容：首行是播报状态（如 `语音已播报（zh-CN-XiaoxiaoNeural）：你好…`），末尾附一行 `AUDIO:audio/mpeg:<base64>` 携带完整音频。AgentMind 的 MCP 客户端会自动把这段音频转成 WebUI 里的**微信式语音条**（点击播放），而不会把 base64 塞进模型上下文。
+
+## 许可证提示
+
+`edge-tts` 是 **GPL-3.0** 开源（[rany2/edge-tts](https://github.com/rany2/edge-tts)，2023 年发布，11.7k⭐）。个人/面试演示无碍；若商用分发，请留意 GPL 传染性要求。`pygame` 为 LGPL。
 
 ## 核心设计
 

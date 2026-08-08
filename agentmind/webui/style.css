@@ -191,3 +191,28 @@ pre { background: var(--bg); padding: 8px; border-radius: 6px; overflow-x: auto;
 .subagent-body { display: none; padding: 10px 12px; border-top: 1px solid var(--border); flex-direction: column; gap: 8px; }
 .subagent-card.open .subagent-body { display: flex; }
 .subagent-result { white-space: pre-wrap; word-break: break-word; font-size: 13px; }
+
+/* WeChat-style voice bubble */
+.voice-bubble {
+  display: flex; align-items: center; gap: 10px;
+  background: #4f9d4f; color: #fff;
+  border-radius: 22px; padding: 10px 16px; min-width: 150px;
+  cursor: pointer; user-select: none; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.voice-bubble:hover { filter: brightness(1.08); }
+.vb-play { font-size: 12px; width: 14px; text-align: center; }
+.vb-wave { display: flex; align-items: center; gap: 3px; flex: 1; }
+.vb-wave i {
+  width: 3px; background: rgba(255,255,255,0.85); border-radius: 2px;
+  animation: vb-wave 1s ease-in-out infinite;
+}
+.vb-wave i:nth-child(1) { height: 8px; animation-delay: 0s; }
+.vb-wave i:nth-child(2) { height: 14px; animation-delay: 0.1s; }
+.vb-wave i:nth-child(3) { height: 10px; animation-delay: 0.2s; }
+.vb-wave i:nth-child(4) { height: 18px; animation-delay: 0.05s; }
+.vb-wave i:nth-child(5) { height: 12px; animation-delay: 0.15s; }
+.vb-wave i:nth-child(6) { height: 16px; animation-delay: 0.25s; }
+.vb-wave i:nth-child(7) { height: 9px; animation-delay: 0.12s; }
+.voice-bubble:not(.playing) .vb-wave i { animation: none; height: 6px; }
+@keyframes vb-wave { 0%, 100% { transform: scaleY(0.4); } 50% { transform: scaleY(1.2); } }
+.vb-duration { font-size: 11px; opacity: 0.9; font-variant-numeric: tabular-nums; }

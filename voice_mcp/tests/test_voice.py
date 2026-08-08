@@ -67,15 +67,24 @@ def audio_chunks(n=20, size=1024):
 # ---- TTSPlayer ---------------------------------------------------------
 async def test_streams_and_plays():
     player, playback = make_player(audio_chunks(n=20, size=1024))  # 20KB > threshold
-    await player.speak("这是一段比较长的测试文本", "zh-CN-XiaoxiaoNeural")
+    data = await player.speak("这是一段比较长的测试文本", "zh-CN-XiaoxiaoNeural")
     assert playback.played, "playback should have started"
     assert len(set(playback.played)) == 1, "should play the same temp file"
+    assert data == b"x" * (20 * 1024)  # speak returns the full mp3 bytes
 
 
 async def test_short_text_plays_complete_file():
     player, playback = make_player(audio_chunks(n=1, size=512))  # below threshold
-    await player.speak("短", "zh-CN-XiaoxiaoNeural")
+    data = await player.speak("短", "zh-CN-XiaoxiaoNeural")
     assert playback.played, "complete short file must still be played"
+    assert data == b"x" * 512
+
+
+async def test_synthesize_without_playback():
+    player, playback = make_player(audio_chunks(n=5, size=100))
+    data = await player.synthesize("你好", "zh-CN-XiaoxiaoNeural")
+    assert data == b"x" * 500
+    assert not playback.played  # no local playback
 
 
 async def test_synthesis_failure_wrapped():
@@ -144,6 +153,22 @@ async def test_tool_ok(monkeypatch):
     assert result.startswith("语音已播报")
     assert "zh-CN-XiaoxiaoNeural" in result
     assert playback.played
+
+    # the result carries the full audio as base64 for clients to play
+    assert "AUDIO:audio/mpeg:" in result
+    import base64
+
+    b64 = result.split("AUDIO:audio/mpeg:")[1].strip()
+    assert base64.b64decode(b64) == b"x" * (len(audio_chunks()) * 1024)
+
+
+async def test_tool_play_false_returns_audio_without_playing(monkeypatch):
+    player, playback = make_player(audio_chunks())
+    monkeypatch.setattr(voice_mcp_server, "_player", player)
+    result = await voice_speak("你好", play=False)
+    assert result.startswith("已生成语音")
+    assert "AUDIO:audio/mpeg:" in result
+    assert not playback.played  # browser/client will play it instead
 
 
 async def test_tool_audio_device_error(monkeypatch):

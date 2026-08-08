@@ -2,14 +2,17 @@
 connect over stdio and verify its tools are wrapped and callable."""
 from __future__ import annotations
 
+import base64
 import sys
 
 import pytest
 
 from agentmind.config import MCPServerConfig
+from agentmind.tools.context import request_context
 from agentmind.tools.mcp_client import MCPClientManager
 
 _FAKE_SERVER = """
+import base64
 from mcp.server.fastmcp import FastMCP
 
 mcp = FastMCP("fake-server")
@@ -21,6 +24,10 @@ def echo(text: str) -> str:
 @mcp.tool()
 def boom() -> str:
     raise ValueError("server exploded")
+
+@mcp.tool()
+def audio() -> str:
+    return "已生成语音（zh-CN-XiaoxiaoNeural）：你好\\nAUDIO:audio/mpeg:" + base64.b64encode(b"MP3DATA").decode()
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
@@ -61,6 +68,40 @@ async def test_connect_and_wrap_tools(fake_server):
         result = await boom.run()
         assert result.is_error is True
         assert "exploded" in result.output
+    finally:
+        await manager.close()
+
+
+async def test_audio_attachment_emitted_not_in_model_text(fake_server):
+    """Audio returned by an MCP tool is forwarded to the UI as an event and
+    stripped from the model-facing output (keeps LLM context clean)."""
+    manager = MCPClientManager(
+        {
+            "fake": MCPServerConfig(
+                command=sys.executable,
+                args=[str(fake_server)],
+                env={"PYTHONIOENCODING": "utf-8"},
+            )
+        }
+    )
+    try:
+        tools = await manager.connect_all()
+        audio_tool = next(t for t in tools if t.name == "mcp_fake_audio")
+
+        emitted = []
+
+        async def emit(event, payload):
+            emitted.append((event, payload))
+
+        async with request_context(emit):
+            result = await audio_tool.run()
+
+        assert result.output == "已生成语音（zh-CN-XiaoxiaoNeural）：你好"
+        assert "AUDIO:" not in result.output  # base64 not fed to the model
+        assert any(e == "attachment" for e, _ in emitted)
+        attach = next(p for e, p in emitted if e == "attachment")
+        assert attach["mime"] == "audio/mpeg"
+        assert base64.b64decode(attach["data"]) == b"MP3DATA"
     finally:
         await manager.close()
 

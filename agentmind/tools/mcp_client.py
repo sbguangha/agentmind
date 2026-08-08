@@ -18,6 +18,7 @@ from mcp.client.stdio import stdio_client
 
 from agentmind.config import MCPServerConfig
 from agentmind.tools.base import Tool, ToolResult
+from agentmind.tools.context import current_emit
 
 logger = logging.getLogger("agentmind.mcp")
 
@@ -108,7 +109,7 @@ class MCPClientManager:
                     output=f"MCP 工具 {tool.name} 调用失败: {type(exc).__name__}: {exc}",
                     is_error=True,
                 )
-            return _format_mcp_result(result)
+            return await _format_mcp_result(result)
 
         return MCPTool(
             server_name=server_name,
@@ -125,10 +126,32 @@ class MCPClientManager:
         self._stacks.clear()
 
 
-def _format_mcp_result(result) -> ToolResult:
+# Attachment marker emitted by tools that return binary payloads to the UI.
+# Format on its own line:  AUDIO:<mime>:<base64>
+_AUDIO_MARKER = "AUDIO:"
+
+
+def _extract_attachment(output: str) -> tuple[str, dict | None]:
+    """Split a tool output into (text_for_model, attachment|None)."""
+    for line in output.splitlines():
+        if line.startswith(_AUDIO_MARKER):
+            _, mime, data = line.split(":", 2)
+            text = output.replace(line, "").strip()
+            return text, {"mime": mime, "data": data}
+    return output, None
+
+
+async def _format_mcp_result(result) -> ToolResult:
     parts: list[str] = []
     for item in result.content:
         text = getattr(item, "text", None)
         parts.append(str(text) if text is not None else str(item))
     output = "\n".join(parts) if parts else "(无输出)"
-    return ToolResult(output=output, is_error=bool(result.isError))
+
+    text, attachment = _extract_attachment(output)
+    if attachment is not None:
+        emit = current_emit()
+        if emit is not None:
+            # forward the audio to the WebUI so it can render a playable voice bubble
+            await emit("attachment", {"mime": attachment["mime"], "data": attachment["data"], "label": text[:100]})
+    return ToolResult(output=text, is_error=bool(result.isError))

@@ -15,6 +15,7 @@ protocol, so unit tests run with zero hardware and zero network.
 from __future__ import annotations
 
 import asyncio
+import base64
 import os
 import tempfile
 import time
@@ -108,16 +109,15 @@ class TTSPlayer:
     playback: Playback = field(default_factory=PygamePlayback)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
-    async def speak(self, text: str, voice: str) -> None:
-        """Synthesize *text* in *voice* and play it locally (blocking until done)."""
+    async def speak(self, text: str, voice: str) -> bytes:
+        """Stream + local playback; returns the full MP3 bytes for other clients."""
         self.playback.ensure_ready()
         async with self._lock:  # serialize playback; a new call preempts the old one
             last_exc: TTSFailure | None = None
             for attempt in range(_MAX_ATTEMPTS):
                 self.playback.stop()
                 try:
-                    await self._stream_and_play(text, voice)
-                    return
+                    return await self._stream_and_play(text, voice)
                 except AudioDeviceError:
                     raise
                 except TTSFailure as exc:  # network is flaky — retry once
@@ -126,8 +126,22 @@ class TTSPlayer:
                         await asyncio.sleep(_RETRY_DELAY)
             raise last_exc  # type: ignore[misc]
 
+    async def synthesize(self, text: str, voice: str) -> bytes:
+        """Stream and return the full MP3 bytes without local playback."""
+        comm = self.communicate_factory(text, voice)
+        buf = bytearray()
+        try:
+            async for chunk in comm.stream():
+                if chunk.get("type") == "audio" and chunk.get("data"):
+                    buf += chunk["data"]
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise TTSFailure(f"{type(exc).__name__}: {exc}") from exc
+        return bytes(buf)
+
     # ------------------------------------------------------------------
-    async def _stream_and_play(self, text: str, voice: str) -> None:
+    async def _stream_and_play(self, text: str, voice: str) -> bytes:
         comm = self.communicate_factory(text, voice)
         fd, path = tempfile.mkstemp(suffix=".mp3")
         write_done = asyncio.Event()
@@ -146,6 +160,8 @@ class TTSPlayer:
                         self._safe_play(path)
             write_done.set()
             await watchdog
+            with open(path, "rb") as rf:
+                return rf.read()
         except asyncio.CancelledError:
             await self._stop_watchdog(watchdog, write_done)
             self.playback.stop()
@@ -255,13 +271,14 @@ def _resolve_voice(voice: str) -> str | None:
 
 
 @mcp.tool()
-async def voice_speak(text: str, voice: str = DEFAULT_VOICE) -> str:
+async def voice_speak(text: str, voice: str = DEFAULT_VOICE, play: bool = True) -> str:
     """将文本合成为语音并在本机播放（edge-tts 流式合成 + pygame 边生成边播放）。
 
     - text: 需要朗读的文本（最长 1000 字符，超出自动截断）
     - voice: 音色名或别名，默认 zh-CN-XiaoxiaoNeural；
       常用别名：xiaoxiao / yunxi / yunjian / xiaobei / en / japanese / korean
-    返回播报结果；音频输出到 MCP Server 所在机器的扬声器。
+    - play: 是否在本机扬声器播放（默认 true）；false 时只合成，供客户端拿到音频自行播放
+    返回播报状态，并在末尾附带一行 AUDIO:<mime>:<base64>，携带完整音频供客户端播放。
     """
     if not text or not text.strip():
         return "错误: text 参数不能为空。"
@@ -275,7 +292,12 @@ async def voice_speak(text: str, voice: str = DEFAULT_VOICE) -> str:
         return f"错误: 未知音色。可选: {sample} …（也支持别名 xiaoxiao/yunxi/en/japanese）"
 
     try:
-        await _player.speak(text, voice)
+        if play:
+            audio = await _player.speak(text, voice)
+            status = f"语音已播报（{voice}）："
+        else:
+            audio = await _player.synthesize(text, voice)
+            status = f"已生成语音（{voice}）："
     except AudioDeviceError as exc:
         return f"错误: 本机音频不可用: {exc}"
     except TTSFailure as exc:
@@ -286,7 +308,8 @@ async def voice_speak(text: str, voice: str = DEFAULT_VOICE) -> str:
     preview = text if len(text) <= 40 else text[:40] + "…"
     if truncated:
         preview += "（内容过长已截断）"
-    return f"语音已播报（{voice}）：{preview}"
+    b64 = base64.b64encode(audio).decode("ascii")
+    return f"{status}{preview}\nAUDIO:audio/mpeg:{b64}"
 
 
 def main() -> None:

@@ -99,6 +99,11 @@ function handleEvent(event, payload) {
     case "subagent_end":
       finalizeSubagent(payload.result, payload.success);
       break;
+    case "attachment":
+      if (payload.mime && payload.mime.startsWith("audio/")) {
+        addVoiceBubble(payload.label || "", payload.mime, payload.data);
+      }
+      break;
     case "approval_request":
       approvalQueue.push(payload);
       showNextApproval();
@@ -209,6 +214,59 @@ function finalizeSubagent(result, success) {
   el.querySelector(".subagent-status").textContent = success ? "完成" : "失败";
   el.classList.add("done");
   scrollToBottom();
+}
+
+/* ---------------- Voice bubble (WeChat style) ---------------- */
+let currentVoice = null;
+
+function addVoiceBubble(label, mime, b64) {
+  const el = document.createElement("div");
+  el.className = "msg assistant";
+  el.innerHTML = `
+    <span class="role">AgentMind · 语音</span>
+    <div class="voice-bubble" data-src="data:${mime};base64,${b64}" title="${escapeHtml(label)}">
+      <span class="vb-play">▶</span>
+      <span class="vb-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      <span class="vb-duration">0:00</span>
+    </div>`;
+  els.chat.appendChild(el);
+  const bubble = el.querySelector(".voice-bubble");
+  bubble.onclick = () => toggleVoice(bubble);
+  scrollToBottom();
+  return bubble;
+}
+
+function toggleVoice(bubble) {
+  if (currentVoice && currentVoice._bubble === bubble && !currentVoice.paused) {
+    currentVoice.pause();
+    setVoicePlaying(bubble, false);
+    return;
+  }
+  if (currentVoice) {
+    currentVoice.pause();
+    setVoicePlaying(currentVoice._bubble, false);
+  }
+  const audio = new Audio(bubble.dataset.src);
+  audio._bubble = bubble;
+  currentVoice = audio;
+  setVoicePlaying(bubble, true);
+  audio.onloadedmetadata = () => {
+    bubble.querySelector(".vb-duration").textContent = fmtDuration(audio.duration);
+  };
+  audio.onended = () => setVoicePlaying(bubble, false);
+  audio.onerror = () => { setVoicePlaying(bubble, false); bubble.querySelector(".vb-duration").textContent = "播放失败"; };
+  audio.play().catch(() => setVoicePlaying(bubble, false));
+}
+
+function setVoicePlaying(bubble, playing) {
+  bubble.classList.toggle("playing", playing);
+  bubble.querySelector(".vb-play").textContent = playing ? "❚❚" : "▶";
+}
+
+function fmtDuration(secs) {
+  if (!isFinite(secs) || secs < 0) return "0:00";
+  const s = Math.round(secs);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 /* ---------------- Approval ---------------- */
