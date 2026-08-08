@@ -32,11 +32,11 @@ _MAX_ATTEMPTS = 2  # edge-tts' Microsoft endpoint is throttled/unstable; retry o
 _RETRY_DELAY = 0.8
 
 
-class TTSFailure(RuntimeError):
+class TTSError(RuntimeError):
     """Raised when synthesis or playback fails in a user-recoverable way."""
 
 
-class AudioDeviceError(TTSFailure):
+class AudioDeviceError(TTSError):
     """Raised when the local audio backend cannot initialize."""
 
 
@@ -113,14 +113,14 @@ class TTSPlayer:
         """Stream + local playback; returns the full MP3 bytes for other clients."""
         self.playback.ensure_ready()
         async with self._lock:  # serialize playback; a new call preempts the old one
-            last_exc: TTSFailure | None = None
+            last_exc: TTSError | None = None
             for attempt in range(_MAX_ATTEMPTS):
                 self.playback.stop()
                 try:
                     return await self._stream_and_play(text, voice)
                 except AudioDeviceError:
                     raise
-                except TTSFailure as exc:  # network is flaky — retry once
+                except TTSError as exc:  # network is flaky — retry once
                     last_exc = exc
                     if attempt + 1 < _MAX_ATTEMPTS:
                         await asyncio.sleep(_RETRY_DELAY)
@@ -137,7 +137,7 @@ class TTSPlayer:
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001
-            raise TTSFailure(f"{type(exc).__name__}: {exc}") from exc
+            raise TTSError(f"{type(exc).__name__}: {exc}") from exc
         return bytes(buf)
 
     # ------------------------------------------------------------------
@@ -166,10 +166,10 @@ class TTSPlayer:
             await self._stop_watchdog(watchdog, write_done)
             self.playback.stop()
             raise
-        except Exception as exc:  # noqa: BLE001 - wrap into TTSFailure
+        except Exception as exc:  # noqa: BLE001 - wrap into TTSError
             await self._stop_watchdog(watchdog, write_done)
             self.playback.stop()
-            raise TTSFailure(f"{type(exc).__name__}: {exc}") from exc
+            raise TTSError(f"{type(exc).__name__}: {exc}") from exc
         finally:
             try:
                 os.unlink(path)
@@ -272,7 +272,10 @@ def _resolve_voice(voice: str) -> str | None:
 
 @mcp.tool()
 async def voice_speak(text: str, voice: str = DEFAULT_VOICE, play: bool = True) -> str:
-    """将文本合成为语音并在本机播放（edge-tts 流式合成 + pygame 边生成边播放）。
+    """将文本合成为语音并播报（edge-tts 流式合成 + 本机播放）。
+
+    必须调用：当用户要求"朗读/播报/说出来/语音回复/语音回答/用语音念"某段内容时，
+    你必须调用本工具，并用它的真实返回结果回应——严禁在未调用本工具时声称"已播报"。
 
     - text: 需要朗读的文本（最长 1000 字符，超出自动截断）
     - voice: 音色名或别名，默认 zh-CN-XiaoxiaoNeural；
@@ -300,7 +303,7 @@ async def voice_speak(text: str, voice: str = DEFAULT_VOICE, play: bool = True) 
             status = f"已生成语音（{voice}）："
     except AudioDeviceError as exc:
         return f"错误: 本机音频不可用: {exc}"
-    except TTSFailure as exc:
+    except TTSError as exc:
         return f"错误: 语音合成失败: {exc}"
     except Exception as exc:  # noqa: BLE001 - never crash the MCP request
         return f"错误: 未知异常: {type(exc).__name__}: {exc}"

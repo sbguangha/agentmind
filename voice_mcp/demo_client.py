@@ -13,10 +13,10 @@ import asyncio
 import os
 import sys
 
-sys.stdout.reconfigure(errors="replace")
-
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+sys.stdout.reconfigure(errors="replace")
 
 DEFAULT_TEXT = "你好，我是 AgentMind 的语音工具，测试通过。"
 

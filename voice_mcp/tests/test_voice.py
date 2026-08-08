@@ -4,12 +4,11 @@ from __future__ import annotations
 import time
 
 import pytest
-
 import voice_mcp_server
 from voice_mcp_server import (
-    AudioDeviceError,
     MAX_TEXT_CHARS,
-    TTSFailure,
+    AudioDeviceError,
+    TTSError,
     TTSPlayer,
     _resolve_voice,
     voice_speak,
@@ -97,7 +96,7 @@ async def test_synthesis_failure_wrapped():
         communicate_factory=lambda text, voice: Boom([]),
         playback=FakePlayback(),
     )
-    with pytest.raises(TTSFailure, match="edge server 500"):
+    with pytest.raises(TTSError, match="edge server 500"):
         await player.speak("你好", "zh-CN-XiaoxiaoNeural")
 
 
