@@ -28,6 +28,10 @@ const TOKEN = new URLSearchParams(location.search).get("token") || "";
 const authSuffix = TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "";
 function api(path) { return `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(TOKEN)}`; }
 
+// bump this when the WebUI logic changes; helps diagnose stale-cache issues
+const APP_VERSION = "v3-persist";
+console.log("[AgentMind] app loaded:", APP_VERSION);
+
 let ws = null;
 let sessionId = null;
 let sessions = [];
@@ -230,7 +234,7 @@ function addVoiceBubble(label, mime, url) {
   el.className = "msg assistant";
   el.innerHTML = `
     <span class="role">AgentMind · 语音</span>
-    <div class="voice-bubble" data-src="${url}" title="${escapeHtml(label)}">
+    <div class="voice-bubble" data-src="${url}${TOKEN ? (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) : ""}" title="${escapeHtml(label)}">
       <span class="vb-play">▶</span>
       <span class="vb-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
       <span class="vb-duration">0:00</span>
@@ -239,6 +243,7 @@ function addVoiceBubble(label, mime, url) {
   const bubble = el.querySelector(".voice-bubble");
   bubble.onclick = () => toggleVoice(bubble);
   scrollToBottom();
+  console.log("[AgentMind] voice bubble added:", url);
   return bubble;
 }
 
@@ -320,6 +325,7 @@ function switchSession(id) {
 }
 
 async function renderHistory() {
+  console.log("[AgentMind] renderHistory()", sessionId, "needsHistoryRender=", needsHistoryRender);
   els.chat.innerHTML = "";
   currentAssistantEl = null;
   toolCards = [];

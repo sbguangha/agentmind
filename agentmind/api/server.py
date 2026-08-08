@@ -269,6 +269,8 @@ async def _cors_middleware(request: web.Request, handler):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    # the WebUI is a local app; never cache so code changes take effect on reload
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
