@@ -1,5 +1,9 @@
 # AgentMind 🐈
 
+<p align="center">
+  <img src="./images/banner.svg" alt="AgentMind banner" width="100%" />
+</p>
+
 一个用 **Python + asyncio** 从零自研的、**完整可运行**的个人 AI Agent。
 
 它不是为了包装一个 API，而是完整实现了成熟 Agent 的四大核心能力，并且每一条都能讲清楚"为什么这样设计"：

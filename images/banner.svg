@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420" width="1280" height="420" role="img" aria-label="AgentMind architecture banner">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0e1116"/>
+      <stop offset="0.55" stop-color="#141a22"/>
+      <stop offset="1" stop-color="#191226"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4cc2ff"/>
+      <stop offset="1" stop-color="#9a7bff"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1a2230" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#1d1730" stop-opacity="0.9"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- background -->
+  <rect width="1280" height="420" fill="url(#bg)"/>
+  <circle cx="1120" cy="60" r="220" fill="#4cc2ff" opacity="0.06"/>
+  <circle cx="180" cy="400" r="260" fill="#9a7bff" opacity="0.07"/>
+
+  <!-- title -->
+  <text x="64" y="86" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="52" font-weight="700" fill="#eaf2fb">AgentMind</text>
+  <rect x="64" y="104" width="210" height="6" rx="3" fill="url(#accent)" filter="url(#glow)"/>
+  <text x="64" y="150" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="20" fill="#8a94a3">一个用 Python 从零自研的完整 AI Agent</text>
+  <text x="64" y="178" font-family="Consolas, monospace" font-size="15" fill="#4cc2ff">perception · react · tools · memory</text>
+
+  <!-- capability chips -->
+  <g font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="14">
+    <g>
+      <rect x="64" y="212" width="228" height="40" rx="10" fill="url(#chip)" stroke="#2a3444"/>
+      <text x="78" y="237" fill="#4cc2ff">🧭 感知 Perception</text>
+    </g>
+    <g>
+      <rect x="304" y="212" width="228" height="40" rx="10" fill="url(#chip)" stroke="#2a3444"/>
+      <text x="318" y="237" fill="#4cc2ff">🔁 推理 ReAct Loop</text>
+    </g>
+    <g>
+      <rect x="544" y="212" width="228" height="40" rx="10" fill="url(#chip)" stroke="#2a3444"/>
+      <text x="558" y="237" fill="#4cc2ff">🛠️ 工具调用 Tools</text>
+    </g>
+    <g>
+      <rect x="64" y="262" width="228" height="40" rx="10" fill="url(#chip)" stroke="#2a3444"/>
+      <text x="78" y="287" fill="#9a7bff">🧠 记忆 Memory</text>
+    </g>
+    <g>
+      <rect x="304" y="262" width="228" height="40" rx="10" fill="url(#chip)" stroke="#2a3444"/>
+      <text x="318" y="287" fill="#9a7bff">🔐 人工审批 Approval</text>
+    </g>
+    <g>
+      <rect x="544" y="262" width="228" height="40" rx="10" fill="url(#chip)" stroke="#2a3444"/>
+      <text x="558" y="287" fill="#9a7bff">👥 子代理 Subagent</text>
+    </g>
+    <g>
+      <rect x="64" y="312" width="708" height="40" rx="10" fill="url(#chip)" stroke="#2a3444"/>
+      <text x="78" y="337" fill="#eaf2fb">📦 上下文压缩 / 记忆巩固 &#160;·&#160; WebUI + CLI + OpenAI 兼容 API</text>
+    </g>
+  </g>
+
+  <!-- architecture flow -->
+  <g transform="translate(830,60)">
+    <text x="0" y="12" font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="13" fill="#8a94a3">核心数据流</text>
+
+    <!-- boxes -->
+    <g font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="12">
+      <rect x="0" y="28" width="150" height="34" rx="8" fill="#1a2230" stroke="#2a3444"/>
+      <text x="75" y="50" text-anchor="middle" fill="#eaf2fb">用户 WebUI / CLI</text>
+
+      <rect x="0" y="86" width="150" height="34" rx="8" fill="#1a2230" stroke="#2a3444"/>
+      <text x="75" y="108" text-anchor="middle" fill="#4cc2ff">MessageBus 总线</text>
+
+      <rect x="0" y="144" width="150" height="34" rx="8" fill="#1a2230" stroke="#2a3444"/>
+      <text x="75" y="166" text-anchor="middle" fill="#4cc2ff">AgentLoop 编排</text>
+
+      <rect x="-12" y="202" width="174" height="64" rx="10" fill="#1a2230" stroke="url(#accent)" stroke-width="1.6"/>
+      <text x="75" y="226" text-anchor="middle" font-weight="700" fill="#eaf2fb">AgentRunner</text>
+      <text x="75" y="248" text-anchor="middle" fill="#9a7bff">ReAct: 思考→审批→行动→观察</text>
+    </g>
+
+    <!-- arrows down -->
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#4c5873"/>
+      </marker>
+    </defs>
+    <g stroke="#4c5873" stroke-width="2" marker-end="url(#arr)">
+      <line x1="75" y1="62" x2="75" y2="84"/>
+      <line x1="75" y1="120" x2="75" y2="142"/>
+      <line x1="75" y1="178" x2="75" y2="200"/>
+    </g>
+
+    <!-- side outputs -->
+    <g font-family="Segoe UI, Microsoft YaHei, sans-serif" font-size="11">
+      <rect x="196" y="86" width="150" height="34" rx="8" fill="#141a22" stroke="#2a3444"/>
+      <text x="271" y="108" text-anchor="middle" fill="#8a94a3">LLM Provider</text>
+      <line x1="150" y1="103" x2="194" y2="103" stroke="#3a4660" stroke-width="1.6"/>
+
+      <rect x="196" y="144" width="150" height="34" rx="8" fill="#141a22" stroke="#2a3444"/>
+      <text x="271" y="166" text-anchor="middle" fill="#8a94a3">Tools 工具</text>
+      <line x1="150" y1="161" x2="194" y2="161" stroke="#3a4660" stroke-width="1.6"/>
+
+      <rect x="196" y="202" width="150" height="34" rx="8" fill="#141a22" stroke="#2a3444"/>
+      <text x="271" y="224" text-anchor="middle" fill="#8a94a3">Long-Term Memory</text>
+      <line x1="162" y1="226" x2="194" y2="226" stroke="#3a4660" stroke-width="1.6"/>
+    </g>
+  </g>
+
+  <!-- footer -->
+  <text x="64" y="392" font-family="Consolas, monospace" font-size="13" fill="#5b6470">Python 3.11+ · asyncio · aiohttp · 41 tests · MIT License</text>
+</svg>
