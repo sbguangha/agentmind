@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+data
+workspace
+tests
+docs
+images
+voice_mcp
+*.md
+!README.md

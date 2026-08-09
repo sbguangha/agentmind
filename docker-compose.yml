@@ -1,0 +1,25 @@
+services:
+  agentmind:
+    build: .
+    image: agentmind:latest
+    container_name: agentmind
+    ports:
+      - "8765:8765"
+    environment:
+      # ---- model (required) ----
+      AGENTMIND_API_KEY: "${AGENTMIND_API_KEY:?please set your API key in .env or shell}"
+      AGENTMIND_MODEL: "${AGENTMIND_MODEL:-deepseek-v4-flash}"
+      AGENTMIND_API_BASE: "${AGENTMIND_API_BASE:-https://api.deepseek.com/v1}"
+      # ---- access control (recommended for a public resume link) ----
+      # anyone with the link + token can use the agent; set it to avoid abuse
+      AGENTMIND_WEB_TOKEN: "${AGENTMIND_WEB_TOKEN:-}"
+      # ---- behavior ----
+      AGENTMIND_WORKSPACE_ACCESS: "${AGENTMIND_WORKSPACE_ACCESS:-restricted}"
+      AGENTMIND_HOST: 0.0.0.0
+      AGENTMIND_PORT: 8765
+    volumes:
+      - agentmind_data:/app/data
+    restart: unless-stopped
+
+volumes:
+  agentmind_data:
