@@ -102,8 +102,15 @@ class AfterSalesCheckTool(Tool):
     async def run(self, order_id: str, reason: str = "", **kwargs) -> ToolResult:
         if self._tracker is not None and current_session_id():
             await self._tracker.note_activity(current_session_id())
-        verdict = evaluate_after_sales(self._api, order_id.strip(), reason or "")
-        return ToolResult(output=verdict.to_text(order_id.strip()))
+        order_id = order_id.strip()
+        verdict = evaluate_after_sales(self._api, order_id, reason or "")
+        output = verdict.to_text(order_id)
+        order = self._api.lookup_order(order_id)
+        if verdict.allowed and order is not None:
+            from agentmind.ecommerce.profile import profile_hint
+
+            output += profile_hint(self._api, order["user"])
+        return ToolResult(output=output)
 
 
 class AfterSalesApplyTool(Tool):

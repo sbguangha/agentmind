@@ -75,6 +75,22 @@ class AgentRuntime:
         )
         if settings.enable_subagents:
             self.registry.register(DelegateTool(self.subagents))
+        if settings.enable_ecommerce:
+            from agentmind.ecommerce.profile import UserProfileTracker
+            from agentmind.tools.ecommerce_analytics import (
+                PriceCompareTool,
+                RememberPreferenceTool,
+                ServiceQualityCheckTool,
+                UserProfileTool,
+            )
+
+            self.profile_tracker = UserProfileTracker(self.ecommerce_api)
+            self.registry.register_all(
+                UserProfileTool(self.profile_tracker),
+                RememberPreferenceTool(self.profile_tracker),
+                PriceCompareTool(self.subagents),
+                ServiceQualityCheckTool(self.provider, settings),
+            )
 
         # context compression & memory consolidation
         self.compressor = Compressor(self.provider, settings)

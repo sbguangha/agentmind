@@ -29,6 +29,9 @@
 | 🛒 **电商售后 Agent** | 业务闭环：查单/物流/退货，规则引擎判定资格，高风险操作人工审批 | `ecommerce/` mock 开放平台 + 规则引擎 + `after_sales_apply` 接入审批门控 |
 | 📚 **售后政策知识库** | 政策不再靠模型背，而是 RAG 检索 | `ecommerce/policies.py` 政策文档 + `after_sales_policy` 工具 |
 | 🗂️ **客服会话状态机** | 待处理→处理中→已解决/已转人工/超时升级 | `ecommerce/service_state.py` + `escalate_human`/`resolve_issue` 工具 + 超时自动升级 |
+| 👤 **用户画像** | 会员等级/消费/退货频率/偏好 → 差异化服务 | `ecommerce/profile.py` + `user_profile`/`remember_preference` 工具 |
+| 💰 **竞价比价子代理** | 复杂比价委派独立子代理联网搜索 | `price_compare` 工具（复用 SubagentManager） |
+| ✅ **话术质检** | 发送前评估共情/清晰/解决程度 + 满意度预估 | `service_quality_check` 工具（复用 provider） |
 
 - **技术栈**：Python 3.11+ · asyncio · aiohttp · pydantic（仅 3 个运行时依赖）
 - **模型**：任何 OpenAI 兼容接口（OpenAI / DeepSeek / Ollama / vLLM / Kimi...），直接走 HTTP 协议实现，不依赖 SDK
@@ -160,6 +163,9 @@ uv run agentmind --port 9000          # 自定义端口
 | 📚 售后政策 | `退货运费谁出？退款多久到账？`（RAG 检索政策库，如实回答） |
 | 🗂️ 转人工 | `你们处理太慢了，我要投诉！`（生成工单号，状态→已转人工） |
 | 🗂️ 会话状态 | 顶部徽章实时显示 待处理/处理中/已解决/已转人工；超时自动升级 |
+| 👤 用户画像 | `我是张三，JD20260801004 能退吗？`（返回金卡会员画像 → 差异化服务） |
+| 💰 竞价比价 | `罗技 MX Master 3S 在别家买更便宜吗？`（子代理联网比价） |
+| ✅ 话术质检 | 复杂售后回复前自动质检 + 满意度预估 |
 
 ---
 
@@ -202,7 +208,8 @@ agentmind/
 │   ├── api.py            # 🛒 mock 开放平台（订单/物流/售后，JD 风格契约）
 │   ├── rules.py          # 🛒 售后规则引擎（资格判定 + 风险分级）
 │   ├── policies.py       # 📚 售后政策知识库（RAG 检索）
-│   └── service_state.py  # 🗂️ 客服会话状态机（转人工/解决/超时升级）
+│   ├── service_state.py  # 🗂️ 客服会话状态机（转人工/解决/超时升级）
+│   └── profile.py        # 👤 用户画像（会员等级/退货风险/偏好）
 ├── session/
 │   ├── types.py          # Message / Session 模型（含压缩游标）
 │   └── manager.py        # 会话持久化 + 上下文裁剪

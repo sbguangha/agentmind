@@ -97,6 +97,9 @@ class MockEcommerceAPI:
     def lookup_order(self, order_id: str) -> dict | None:
         return self._orders.get(order_id)
 
+    def orders(self) -> list[dict]:
+        return list(self._orders.values())
+
     def track_logistics(self, order_id: str) -> list[dict] | None:
         order = self._orders.get(order_id)
         if order is None:
