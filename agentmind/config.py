@@ -95,6 +95,9 @@ class Settings(BaseModel):
     enable_ecommerce: bool = Field(
         default=True, description="Enable mock e-commerce order/logistics/after-sales tools"
     )
+    service_timeout_minutes: int = Field(
+        default=15, description="Sessions stuck in 处理中 past this are auto-escalated to human"
+    )
 
     # ---- Voice (TTS) ------------------------------------------------------
     auto_voice: bool = Field(

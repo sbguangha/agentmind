@@ -27,6 +27,8 @@
 | 🗂️ **工作区作用域 Workspace Scope** | 权限要能按会话收紧/放开 | `security/workspace_access.py` restricted/full 模式 + 每会话覆盖 |
 | 🔌 **MCP 客户端** | 消费外部 MCP Server（如 voice_mcp 语音） | `tools/mcp_client.py` 把 MCP 工具包装成 `mcp_<server>_<tool>` 原生工具 |
 | 🛒 **电商售后 Agent** | 业务闭环：查单/物流/退货，规则引擎判定资格，高风险操作人工审批 | `ecommerce/` mock 开放平台 + 规则引擎 + `after_sales_apply` 接入审批门控 |
+| 📚 **售后政策知识库** | 政策不再靠模型背，而是 RAG 检索 | `ecommerce/policies.py` 政策文档 + `after_sales_policy` 工具 |
+| 🗂️ **客服会话状态机** | 待处理→处理中→已解决/已转人工/超时升级 | `ecommerce/service_state.py` + `escalate_human`/`resolve_issue` 工具 + 超时自动升级 |
 
 - **技术栈**：Python 3.11+ · asyncio · aiohttp · pydantic（仅 3 个运行时依赖）
 - **模型**：任何 OpenAI 兼容接口（OpenAI / DeepSeek / Ollama / vLLM / Kimi...），直接走 HTTP 协议实现，不依赖 SDK
@@ -155,6 +157,9 @@ uv run agentmind --port 9000          # 自定义端口
 | 🛒 电商-查单 | `帮我查一下 JD20260801001 这个订单`（mock 开放平台返回真实数据） |
 | 🛒 电商-退货审批 | `我要退 JD20260801001 这个订单`（先规则校验 → 触发退款审批弹窗 → 批准 → 生成退单号） |
 | 🛒 电商-过期订单 | `JD20260801002 能退吗？`（规则引擎判定超期拒绝） |
+| 📚 售后政策 | `退货运费谁出？退款多久到账？`（RAG 检索政策库，如实回答） |
+| 🗂️ 转人工 | `你们处理太慢了，我要投诉！`（生成工单号，状态→已转人工） |
+| 🗂️ 会话状态 | 顶部徽章实时显示 待处理/处理中/已解决/已转人工；超时自动升级 |
 
 ---
 
@@ -195,7 +200,9 @@ agentmind/
 │   └── workspace_access.py # 🗂️ workspace 作用域(restricted/full) + contextvar 绑定
 ├── ecommerce/
 │   ├── api.py            # 🛒 mock 开放平台（订单/物流/售后，JD 风格契约）
-│   └── rules.py          # 🛒 售后规则引擎（资格判定 + 风险分级）
+│   ├── rules.py          # 🛒 售后规则引擎（资格判定 + 风险分级）
+│   ├── policies.py       # 📚 售后政策知识库（RAG 检索）
+│   └── service_state.py  # 🗂️ 客服会话状态机（转人工/解决/超时升级）
 ├── session/
 │   ├── types.py          # Message / Session 模型（含压缩游标）
 │   └── manager.py        # 会话持久化 + 上下文裁剪

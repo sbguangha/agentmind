@@ -51,6 +51,9 @@ class SessionManager:
     def get(self, session_id: str) -> Session | None:
         return self._sessions.get(session_id)
 
+    def all_sessions(self) -> list[Session]:
+        return list(self._sessions.values())
+
     def get_or_create(self, session_id: str | None) -> Session:
         if session_id and session_id in self._sessions:
             return self._sessions[session_id]
@@ -79,6 +82,7 @@ class SessionManager:
                 "created_at": s.created_at,
                 "updated_at": s.updated_at,
                 "access_mode": s.access_mode,
+                "service_state": s.service_state,
             }
             for s in sorted(self._sessions.values(), key=lambda s: s.updated_at, reverse=True)
         ]

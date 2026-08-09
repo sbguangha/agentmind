@@ -12,6 +12,7 @@ const els = {
   sessionName: document.getElementById("current-session"),
   meta: document.getElementById("meta"),
   accessSelect: document.getElementById("access-select"),
+  serviceBadge: document.getElementById("service-badge"),
   memoryBtn: document.getElementById("memory-btn"),
   memoryDrawer: document.getElementById("memory-drawer"),
   memoryBody: document.getElementById("memory-body"),
@@ -144,7 +145,18 @@ function handleEvent(event, payload) {
       currentAssistantEl.innerHTML =
         `<span class="error-text">⚠ ${escapeHtml(payload.message)}</span>`;
       break;
+    case "service_state":
+      updateServiceBadge(payload.state, payload.label);
+      break;
   }
+}
+
+const SERVICE_LABELS = { new: "待处理", processing: "处理中", resolved: "已解决", escalated: "已转人工" };
+
+function updateServiceBadge(state, label) {
+  if (!state) { els.serviceBadge.classList.add("hidden"); return; }
+  els.serviceBadge.className = "service-badge " + state;
+  els.serviceBadge.textContent = "客服 · " + (label || SERVICE_LABELS[state] || state);
 }
 
 /* ---------------- DOM helpers ---------------- */
@@ -386,6 +398,7 @@ function renderSessions() {
   const cur = sessions.find((s) => s.id === sessionId);
   els.sessionName.textContent = cur ? cur.title : "新对话";
   els.accessSelect.value = cur && cur.access_mode ? cur.access_mode : "restricted";
+  updateServiceBadge(cur && cur.service_state ? cur.service_state : "", "");
 }
 
 async function deleteSession(id) {

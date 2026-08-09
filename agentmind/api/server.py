@@ -45,6 +45,8 @@ class AgentServer:
         await site.start()
         actual_port = self._runner.addresses[0][1]
         self._fanout_task = asyncio.create_task(self._fanout())
+        if hasattr(self._runtime, "service_tracker"):
+            self._service_timeout_task = asyncio.create_task(self._service_timeout_loop())
         token_note = f" (token: {self._runtime.settings.web_token})" if self._runtime.settings.web_token else ""
         print(f"AgentMind WebUI: http://{host}:{actual_port}{token_note}")
         return actual_port
@@ -52,11 +54,36 @@ class AgentServer:
     async def shutdown(self) -> None:
         if self._fanout_task:
             self._fanout_task.cancel()
+        if getattr(self, "_service_timeout_task", None):
+            self._service_timeout_task.cancel()
         for ws in list(self._clients.values()):
             if not ws.closed:
                 await ws.close()
         if self._runner:
             await self._runner.cleanup()
+
+    # ---- customer-service timeout escalation ---------------------------
+    async def _service_timeout_loop(self) -> None:
+        """Periodically escalate sessions stuck in 处理中 past the timeout."""
+        while True:
+            await asyncio.sleep(30)
+            tracker = getattr(self._runtime, "service_tracker", None)
+            if tracker is None:
+                continue
+            try:
+                escalations = await tracker.check_timeout(
+                    self._runtime.settings.service_timeout_minutes
+                )
+            except Exception:  # noqa: BLE001 - never let housekeeping kill the server
+                continue
+            for esc in escalations:
+                await self._bus.publish_outbound(
+                    OutboundMessage(
+                        session_id=esc["session_id"],
+                        event="service_state",
+                        payload={"state": "escalated", "label": "已转人工", "note": esc["reason"]},
+                    )
+                )
 
     # ---- routing -------------------------------------------------------
     def _register_routes(self, app: web.Application) -> None:

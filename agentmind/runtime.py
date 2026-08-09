@@ -57,11 +57,12 @@ class AgentRuntime:
             default_restrict=settings.workspace_access == "restricted",
         )
 
+        # sessions (short-term memory) — created before registry so e-commerce
+        # tools can drive the customer-service state machine
+        self.sessions = SessionManager(settings.resolved_data_dir)
+
         # tools (delegate is registered after the runner exists)
         self.registry = self._build_registry(settings)
-
-        # sessions (short-term memory)
-        self.sessions = SessionManager(settings.resolved_data_dir)
 
         # core
         self.runner = AgentRunner(self.provider, self.registry, self.memory, settings, approval=self.gate)
@@ -137,19 +138,27 @@ class AgentRuntime:
             )
         if settings.enable_ecommerce:
             from agentmind.ecommerce.api import MockEcommerceAPI
+            from agentmind.ecommerce.service_state import ServiceSessionTracker
             from agentmind.tools.ecommerce import (
                 AfterSalesApplyTool,
                 AfterSalesCheckTool,
+                AfterSalesPolicyTool,
+                EscalateHumanTool,
                 LogisticsTrackTool,
                 OrderLookupTool,
+                ResolveIssueTool,
             )
 
             self.ecommerce_api = MockEcommerceAPI()
+            self.service_tracker = ServiceSessionTracker(self.sessions)
             registry.register_all(
                 OrderLookupTool(self.ecommerce_api),
                 LogisticsTrackTool(self.ecommerce_api),
-                AfterSalesCheckTool(self.ecommerce_api),
-                AfterSalesApplyTool(self.ecommerce_api),
+                AfterSalesCheckTool(self.ecommerce_api, self.service_tracker),
+                AfterSalesApplyTool(self.ecommerce_api, self.service_tracker),
+                AfterSalesPolicyTool(),
+                EscalateHumanTool(self.service_tracker),
+                ResolveIssueTool(self.service_tracker),
             )
         return registry
 

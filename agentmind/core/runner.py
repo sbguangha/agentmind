@@ -57,7 +57,7 @@ class AgentRunner:
         system_prompt: str | None = None,
     ) -> str:
         """Process one user message, returning the final assistant answer."""
-        async with request_context(emit):
+        async with request_context(emit, session_id=session.id):
             return await self._run_turn(session, user_text, emit, system_prompt=system_prompt)
 
     async def _run_turn(

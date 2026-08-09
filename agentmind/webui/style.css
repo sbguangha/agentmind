@@ -87,6 +87,14 @@ body {
 }
 .session-name { font-weight: 600; }
 .header-right { display: flex; align-items: center; gap: 14px; }
+.service-badge {
+  font-size: 11px; padding: 3px 10px; border-radius: 10px;
+  background: var(--bg-3); border: 1px solid var(--border); color: var(--text-dim);
+  white-space: nowrap;
+}
+.service-badge.processing { color: #f0b429; border-color: #f0b429; }
+.service-badge.resolved { color: #3dd68c; border-color: #3dd68c; }
+.service-badge.escalated { color: var(--error); border-color: var(--error); }
 .access-label { color: var(--text-dim); font-size: 12px; display: flex; align-items: center; gap: 6px; }
 #access-select {
   background: var(--bg-3); color: var(--text); border: 1px solid var(--border);

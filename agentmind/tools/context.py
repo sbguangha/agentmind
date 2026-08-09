@@ -20,18 +20,25 @@ _emit_var: ContextVar[EmitFn | None] = ContextVar("agentmind_emit", default=None
 _approvals_var: ContextVar["ApprovalManager | None"] = ContextVar(
     "agentmind_approvals", default=None
 )
+_session_id_var: ContextVar[str | None] = ContextVar("agentmind_session_id", default=None)
 
 
 @asynccontextmanager
-async def request_context(emit: EmitFn, approvals: "ApprovalManager | None" = None):
-    """Bind the current turn's emit channel (and approval manager) to this task."""
+async def request_context(
+    emit: EmitFn,
+    approvals: "ApprovalManager | None" = None,
+    session_id: str | None = None,
+):
+    """Bind the current turn's emit channel (approval manager, session id) to this task."""
     token = _emit_var.set(emit)
     atoken = _approvals_var.set(approvals)
+    stoken = _session_id_var.set(session_id)
     try:
         yield
     finally:
         _emit_var.reset(token)
         _approvals_var.reset(atoken)
+        _session_id_var.reset(stoken)
 
 
 def current_emit() -> EmitFn | None:
@@ -41,6 +48,10 @@ def current_emit() -> EmitFn | None:
 
 def current_approvals() -> "ApprovalManager | None":
     return _approvals_var.get()
+
+
+def current_session_id() -> str | None:
+    return _session_id_var.get()
 
 
 async def safe_emit(event: str, payload: dict[str, Any]) -> None:
