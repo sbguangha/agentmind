@@ -44,4 +44,17 @@ def build_system_prompt(settings: Settings, memories: str = "", *, prompt: str |
     """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S %A")
     base = (prompt or settings.system_prompt).strip() or _DEFAULT_PROMPT
-    return base.format(now=now, memories=memories or "（暂无相关记忆）")
+    result = base.format(now=now, memories=memories or "（暂无相关记忆）")
+    if settings.enable_ecommerce:
+        result += _ECOMMERCE_HINT
+    return result
+
+
+_ECOMMERCE_HINT = """
+
+【售后服务】
+你同时担任电商售后客服。规则：
+- 用户要退货/退款时，先调用 after_sales_check 查询是否符合条件，严格以规则引擎判断为准，不自行猜测政策。
+- 确认符合条件后，再调用 after_sales_apply 提交申请；该操作需要用户人工审批，审批通过才执行。
+- 若用户情绪激烈或问题无法解决，如实说明并建议转人工客服。
+- 回答用户时用亲切专业的客服口吻。"""

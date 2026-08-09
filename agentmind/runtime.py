@@ -48,7 +48,8 @@ class AgentRuntime:
 
         # human-in-the-loop approval
         self.approvals = ApprovalManager(timeout=settings.approval_timeout)
-        self.gate = build_approval_gate(settings, self.approvals)
+        extra_risky = {"after_sales_apply"} if settings.enable_ecommerce else set()
+        self.gate = build_approval_gate(settings, self.approvals, extra_risky=extra_risky)
 
         # permission boundary (workspace access scope)
         self.scope_resolver = WorkspaceScopeResolver(
@@ -133,6 +134,22 @@ class AgentRuntime:
                     max_results=settings.search_max_results,
                 ),
                 WebFetchTool(allow_loopback=settings.network_allow_loopback),
+            )
+        if settings.enable_ecommerce:
+            from agentmind.ecommerce.api import MockEcommerceAPI
+            from agentmind.tools.ecommerce import (
+                AfterSalesApplyTool,
+                AfterSalesCheckTool,
+                LogisticsTrackTool,
+                OrderLookupTool,
+            )
+
+            self.ecommerce_api = MockEcommerceAPI()
+            registry.register_all(
+                OrderLookupTool(self.ecommerce_api),
+                LogisticsTrackTool(self.ecommerce_api),
+                AfterSalesCheckTool(self.ecommerce_api),
+                AfterSalesApplyTool(self.ecommerce_api),
             )
         return registry
 

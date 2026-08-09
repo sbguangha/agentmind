@@ -26,6 +26,7 @@
 | 🛡️ **SSRF 网络防护** | 抓取工具不能被利用打内网/云元数据 | `security/network.py` 私有网段拦截 + 每跳重定向校验 |
 | 🗂️ **工作区作用域 Workspace Scope** | 权限要能按会话收紧/放开 | `security/workspace_access.py` restricted/full 模式 + 每会话覆盖 |
 | 🔌 **MCP 客户端** | 消费外部 MCP Server（如 voice_mcp 语音） | `tools/mcp_client.py` 把 MCP 工具包装成 `mcp_<server>_<tool>` 原生工具 |
+| 🛒 **电商售后 Agent** | 业务闭环：查单/物流/退货，规则引擎判定资格，高风险操作人工审批 | `ecommerce/` mock 开放平台 + 规则引擎 + `after_sales_apply` 接入审批门控 |
 
 - **技术栈**：Python 3.11+ · asyncio · aiohttp · pydantic（仅 3 个运行时依赖）
 - **模型**：任何 OpenAI 兼容接口（OpenAI / DeepSeek / Ollama / vLLM / Kimi...），直接走 HTTP 协议实现，不依赖 SDK
@@ -151,6 +152,9 @@ uv run agentmind --port 9000          # 自定义端口
 | 👥 子代理委派 | `用子代理独立调研一下"ReAct 和 Chain-of-Thought 的区别"，把结论汇报给我`（子代理卡片独立运行） |
 | 🌐 网页搜索 | `搜索 python asyncio 的官方文档地址`（Bing 多引擎自动降级，无需 key） |
 | 🛡️ SSRF 防护 | 让 agent `抓取 http://127.0.0.1:8765/api/sessions`（会被拦截并如实说明） |
+| 🛒 电商-查单 | `帮我查一下 JD20260801001 这个订单`（mock 开放平台返回真实数据） |
+| 🛒 电商-退货审批 | `我要退 JD20260801001 这个订单`（先规则校验 → 触发退款审批弹窗 → 批准 → 生成退单号） |
+| 🛒 电商-过期订单 | `JD20260801002 能退吗？`（规则引擎判定超期拒绝） |
 
 ---
 
@@ -189,6 +193,9 @@ agentmind/
 ├── security/
 │   ├── network.py        # 🛡️ SSRF 防护：私有网段拦截 + 重定向校验
 │   └── workspace_access.py # 🗂️ workspace 作用域(restricted/full) + contextvar 绑定
+├── ecommerce/
+│   ├── api.py            # 🛒 mock 开放平台（订单/物流/售后，JD 风格契约）
+│   └── rules.py          # 🛒 售后规则引擎（资格判定 + 风险分级）
 ├── session/
 │   ├── types.py          # Message / Session 模型（含压缩游标）
 │   └── manager.py        # 会话持久化 + 上下文裁剪
@@ -293,7 +300,11 @@ uv run ruff check .       # 代码规范
 能。`tools/mcp_client.py` 是 MCP 客户端：配置 `mcp_servers` 后启动时连接服务器，工具注册为 `mcp_<server>_<tool>` 原生工具。仓库里就带了一个可直接消费的示例——`voice_mcp/`（edge-tts 语音合成）。这样你的 Agent **既能被 MCP 扩展，也能反过来消费 MCP 服务**。
 
 **Q: 语音回复在聊天里长什么样？**
-Agent 调用 `voice_speak` 时，音频会以**微信式语音条**显示在聊天界面（绿色气泡 + 播放按钮 + 波形动画 + 时长），点击即播。音频落盘为 `data/audio/*.mp3`，语音条作为 UI 消息**持久化进会话**——像微信一样，切换会话或刷新页面后依然可以回来点击播放。音频经 MCP 的 `AUDIO:` 附件传输，不会污染模型上下文。
+语音以**微信式语音条**显示（绿色气泡 + 播放按钮 + 波形动画 + 时长），点击即播。音频落盘为 `data/audio/*`，语音条作为 UI 消息**持久化进会话**——切换会话或刷新页面后依然可以回来点击播放。音频经 MCP 的 `AUDIO:` 附件传输，不会污染模型上下文。
+
+触发方式有两种：① 默认开启**自动语音**——每轮文字回答后自动合成一条语音（`auto_voice`，可在 config 里关闭或换 `voice_name` 音色；仅合成不本机外放，本轮模型已主动调用语音工具时自动跳过）；② 显式要求"用语音回答我"，模型会调用 `voice_speak` 并本机播报。
+
+你也可以点输入框左侧的 🎤 **发送自己的语音消息**（浏览器录音 → 上传落盘 → 右侧语音条），同样持久保存。所有消息（文字/语音）悬停后可在 **3 分钟内撤回**。
 
 ---
 

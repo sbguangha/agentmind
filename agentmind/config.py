@@ -91,6 +91,11 @@ class Settings(BaseModel):
         description="name -> MCP server config (stdio). Tools exposed as mcp_<name>_<tool>",
     )
 
+    # ---- E-commerce customer service (Phase 1) ----------------------------
+    enable_ecommerce: bool = Field(
+        default=True, description="Enable mock e-commerce order/logistics/after-sales tools"
+    )
+
     # ---- Voice (TTS) ------------------------------------------------------
     auto_voice: bool = Field(
         default=True,

@@ -24,17 +24,18 @@ _RISKY_TOOLS = {"write_file", "run_shell"}
 
 
 class ApprovalPolicy:
-    def __init__(self, mode: str) -> None:
+    def __init__(self, mode: str, extra_risky: set[str] | tuple[str, ...] = ()) -> None:
         if mode not in {"auto", "ask_risky", "ask_all"}:
             raise ValueError(f"unknown approval_mode: {mode}")
         self.mode = mode
+        self._risky = set(_RISKY_TOOLS) | set(extra_risky)
 
     def requires(self, tool_name: str) -> bool:
         if self.mode == "auto":
             return False
         if self.mode == "ask_all":
             return True
-        return tool_name in _RISKY_TOOLS
+        return tool_name in self._risky
 
 
 class ApprovalManager:
@@ -136,5 +137,9 @@ class ApprovalGate:
         return answer.strip().lower() in {"y", "yes"}
 
 
-def build_approval_gate(settings: Settings, manager: ApprovalManager | None) -> ApprovalGate:
-    return ApprovalGate(ApprovalPolicy(settings.approval_mode), manager)
+def build_approval_gate(
+    settings: Settings,
+    manager: ApprovalManager | None,
+    extra_risky: set[str] | tuple[str, ...] = (),
+) -> ApprovalGate:
+    return ApprovalGate(ApprovalPolicy(settings.approval_mode, extra_risky=extra_risky), manager)
