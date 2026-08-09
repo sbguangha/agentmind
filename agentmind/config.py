@@ -91,6 +91,19 @@ class Settings(BaseModel):
         description="name -> MCP server config (stdio). Tools exposed as mcp_<name>_<tool>",
     )
 
+    # ---- Voice (TTS) ------------------------------------------------------
+    auto_voice: bool = Field(
+        default=True,
+        description="每轮回答后自动生成一条语音消息（voice_tool 不可用时自动跳过）",
+    )
+    voice_tool: str = Field(
+        default="mcp_voice_voice_speak",
+        description="用于自动语音的 TTS 工具名（通常是 MCP 语音工具）",
+    )
+    voice_name: str = Field(
+        default="", description="自动语音的音色（空 = 工具默认音色）"
+    )
+
     # ---- Human-in-the-loop approval --------------------------------------
     approval_mode: str = Field(
         default="ask_risky",

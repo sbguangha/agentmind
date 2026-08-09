@@ -52,9 +52,22 @@ body {
   color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   border: 1px solid transparent;
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+.session-list li .session-title { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.session-list li .session-del {
+  flex: none;
+  font-size: 11px;
+  padding: 0 3px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.session-list li:hover .session-del { opacity: 0.6; }
+.session-list li .session-del:hover { opacity: 1; color: #e5534b; }
 .session-list li:hover { background: var(--bg-3); color: var(--text); }
 .session-list li.active { background: var(--bg-3); color: var(--text); border-color: var(--accent); }
 
@@ -216,3 +229,27 @@ pre { background: var(--bg); padding: 8px; border-radius: 6px; overflow-x: auto;
 .voice-bubble:not(.playing) .vb-wave i { animation: none; height: 6px; }
 @keyframes vb-wave { 0%, 100% { transform: scaleY(0.4); } 50% { transform: scaleY(1.2); } }
 .vb-duration { font-size: 11px; opacity: 0.9; font-variant-numeric: tabular-nums; }
+
+/* user-sent voice bubble sits on the right, wave mirrored */
+.msg.user .voice-bubble { flex-direction: row-reverse; }
+
+/* mic button (voice recording) */
+.mic { align-self: flex-end; }
+.mic.recording {
+  color: #e5534b; border-color: #e5534b;
+  animation: mic-pulse 1s ease-in-out infinite;
+}
+@keyframes mic-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+/* recall (撤回) button, shown on hover for messages inside the 3-min window */
+.msg { position: relative; }
+.recall-btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  font-size: 11px; color: var(--text-dim); cursor: pointer; white-space: nowrap;
+  padding: 2px 6px; border-radius: 4px; background: var(--bg-2); border: 1px solid var(--border);
+  opacity: 0; transition: opacity 0.15s;
+}
+.msg.user .recall-btn { right: calc(100% + 6px); }
+.msg.assistant .recall-btn { left: calc(100% + 6px); }
+.msg:hover .recall-btn:not(.hidden) { opacity: 1; }
+.recall-btn:hover { color: var(--text); }

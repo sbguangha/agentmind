@@ -87,7 +87,7 @@ class SessionManager:
     async def append(self, session: Session, message: Message) -> None:
         session.messages.append(message)
         session.updated_at = time.time()
-        if session.title == "新对话" and message.role == "user":
+        if session.title == "新对话" and message.role == "user" and message.content.strip():
             session.title = message.content[:30].replace("\n", " ")
         await self._save(session)
 

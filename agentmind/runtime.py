@@ -1,6 +1,9 @@
 """Runtime assembly — wiring all subsystems together from settings."""
 from __future__ import annotations
 
+import re
+from collections.abc import Awaitable, Callable
+
 from agentmind.config import Settings
 from agentmind.core.compressor import Compressor
 from agentmind.core.consolidator import MemoryConsolidator
@@ -13,6 +16,7 @@ from agentmind.memory.store import MemoryStore
 from agentmind.providers.openai_compat import OpenAICompatProvider
 from agentmind.security.workspace_access import WorkspaceScopeResolver
 from agentmind.session.manager import SessionManager
+from agentmind.tools.context import EmitFn, request_context
 from agentmind.tools.datetime_tool import GetCurrentTimeTool
 from agentmind.tools.delegate_tool import DelegateTool
 from agentmind.tools.filesystem import (
@@ -82,6 +86,31 @@ class AgentRuntime:
         if self.mcp.enabled:
             for tool in await self.mcp.connect_all():
                 self.registry.register(tool)
+
+    def build_auto_voice(self) -> Callable[[str, EmitFn], Awaitable[None]] | None:
+        """Return the loop's auto-voice callback, or None when unavailable.
+
+        Call after :meth:`startup` so MCP-provided voice tools are registered.
+        """
+        if not self.settings.auto_voice:
+            return None
+        tool = self.registry.get(self.settings.voice_tool)
+        if tool is None:
+            return None
+
+        async def auto_voice(text: str, emit: EmitFn) -> None:
+            # strip markdown so the TTS doesn't read out "星号/井号"
+            clean = re.sub(r"[*_`#>\[\]]", "", text).strip()
+            if not clean:
+                return
+            kwargs: dict = {"text": clean, "play": False}
+            if self.settings.voice_name:
+                kwargs["voice"] = self.settings.voice_name
+            # the MCP tool's AUDIO: marker is forwarded via the bound emit channel
+            async with request_context(emit):
+                await tool.run(**kwargs)
+
+        return auto_voice
 
     def _build_registry(self, settings: Settings) -> ToolRegistry:
         registry = ToolRegistry()

@@ -19,6 +19,7 @@ class Message:
     tool_calls: list[ToolCall] | None = None  # for "assistant" role
     attachment: dict | None = None  # UI-only payload (e.g. {"kind":"voice","url":...})
     timestamp: float = field(default_factory=time.time)
+    id: str = field(default_factory=lambda: uuid.uuid4().hex[:12])  # for recall/API addressing
 
     def to_api(self) -> dict:
         """Convert to an OpenAI chat-completion message."""
@@ -39,7 +40,12 @@ class Message:
         return msg
 
     def to_dict(self) -> dict:
-        data: dict = {"role": self.role, "content": self.content, "timestamp": self.timestamp}
+        data: dict = {
+            "role": self.role,
+            "content": self.content,
+            "timestamp": self.timestamp,
+            "id": self.id,
+        }
         if self.name:
             data["name"] = self.name
         if self.tool_call_id:
@@ -57,6 +63,7 @@ class Message:
             tool_call_id=data.get("tool_call_id"),
             attachment=data.get("attachment"),
             timestamp=data.get("timestamp", 0.0),
+            id=data.get("id") or uuid.uuid4().hex[:12],
         )
 
 

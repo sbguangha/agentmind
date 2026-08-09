@@ -66,6 +66,8 @@ class AgentServer:
         app.router.add_get("/api/sessions", self._list_sessions)
         app.router.add_post("/api/sessions", self._create_session)
         app.router.add_get("/api/sessions/{sid}/messages", self._session_messages)
+        app.router.add_delete("/api/sessions/{sid}/messages/{mid}", self._recall_message)
+        app.router.add_post("/api/sessions/{sid}/voice", self._upload_voice)
         app.router.add_put("/api/sessions/{sid}/access", self._set_session_access)
         app.router.add_delete("/api/sessions/{sid}", self._delete_session)
         app.router.add_get("/api/memory", self._list_memory)
@@ -88,18 +90,12 @@ class AgentServer:
 
     async def _persist_audio(self, msg: OutboundMessage) -> None:
         """Save attachment audio to disk and persist a UI-only voice message."""
-        try:
-            data = base64.b64decode(msg.payload.get("data", ""))
-        except Exception:  # noqa: BLE001 - malformed audio must not break the loop
+        mime = msg.payload.get("mime", "audio/mpeg")
+        url = self._save_audio(mime, msg.payload.get("data", ""))
+        if url is None:
             return
-        if not data:
-            return
-        name = f"{uuid.uuid4().hex[:12]}.mp3"
-        (self._audio_dir / name).write_bytes(data)
-
-        url = f"/api/audio/{name}"
         msg.payload = {
-            "mime": msg.payload.get("mime", "audio/mpeg"),
+            "mime": mime,
             "url": url,
             "label": msg.payload.get("label", ""),
         }
@@ -114,7 +110,28 @@ class AgentServer:
                 ),
             )
 
+    def _save_audio(self, mime: str, b64: str) -> str | None:
+        """Decode base64 audio and write it under the audio dir; return its URL."""
+        try:
+            data = base64.b64decode(b64)
+        except Exception:  # noqa: BLE001 - malformed audio must not break the loop
+            return None
+        if not data:
+            return None
+        ext = _AUDIO_EXTS.get(mime.split(";")[0].strip().lower(), "webm")
+        name = f"{uuid.uuid4().hex[:12]}.{ext}"
+        (self._audio_dir / name).write_bytes(data)
+        return f"/api/audio/{name}"
+
     # ---- WebSocket -----------------------------------------------------
+    def _welcome_payload(self, session_id: str | None) -> dict:
+        return {
+            "session_id": session_id,
+            "sessions": self._runtime.sessions.list(),
+            "tools": self._runtime.registry.names,
+            "model": self._runtime.settings.model,
+        }
+
     async def _ws_handler(self, request: web.Request) -> web.WebSocketResponse:
         ws = web.WebSocketResponse(max_msg_size=1 << 20)
         await ws.prepare(request)
@@ -129,23 +146,26 @@ class AgentServer:
 
                 if data.get("type") == "hello":
                     session_id = data.get("session_id") or None
-                    session = self._runtime.sessions.get_or_create(session_id)
-                    session_id = session.id
-                    self._clients[session_id] = ws
+                    # never create a session here — a page refresh would pile up
+                    # empty sessions; creation is deferred to the first chat message
+                    session = self._runtime.sessions.get(session_id) if session_id else None
+                    session_id = session.id if session else None
+                    if session is not None:
+                        self._clients[session_id] = ws
                     await ws.send_json(
-                        {
-                            "event": "welcome",
-                            "payload": {
-                                "session_id": session.id,
-                                "sessions": self._runtime.sessions.list(),
-                                "tools": self._runtime.registry.names,
-                                "model": self._runtime.settings.model,
-                            },
-                        }
+                        {"event": "welcome", "payload": self._welcome_payload(session_id)}
                     )
-                elif data.get("type") == "chat" and session_id:
+                elif data.get("type") == "chat":
                     text = (data.get("text") or "").strip()
                     if text:
+                        if session_id is None or self._runtime.sessions.get(session_id) is None:
+                            session = self._runtime.sessions.create()
+                            session_id = session.id
+                            self._clients[session_id] = ws
+                            # tell the client about the new session so the sidebar updates
+                            await ws.send_json(
+                                {"event": "welcome", "payload": self._welcome_payload(session_id)}
+                            )
                         await self._bus.publish(InboundMessage(session_id=session_id, text=text))
                 elif data.get("type") == "approval":
                     approval_id = data.get("approval_id")
@@ -169,6 +189,45 @@ class AgentServer:
         if session is None:
             return _json({"error": "session not found"}, status=404)
         return _json({"messages": [m.to_dict() for m in session.messages]})
+
+    async def _recall_message(self, request: web.Request) -> web.Response:
+        """Recall (delete) a message within RECALL_WINDOW_SECONDS of its creation."""
+        session = self._runtime.sessions.get(request.match_info["sid"])
+        if session is None:
+            return _json({"error": "session not found"}, status=404)
+        mid = request.match_info["mid"]
+        for i, m in enumerate(session.messages):
+            if m.id == mid:
+                age = time.time() - m.timestamp
+                if age > RECALL_WINDOW_SECONDS:
+                    return _json({"error": "发送超过 3 分钟，无法撤回"}, status=403)
+                del session.messages[i]
+                await self._runtime.sessions.save(session)
+                return _json({"recalled": True})
+        return _json({"error": "message not found"}, status=404)
+
+    async def _upload_voice(self, request: web.Request) -> web.Response:
+        """Persist a user-recorded voice message into the session."""
+        session = self._runtime.sessions.get(request.match_info["sid"])
+        if session is None:
+            return _json({"error": "session not found"}, status=404)
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return _json({"error": "invalid JSON body"}, status=400)
+        mime = str(body.get("mime") or "audio/webm")
+        if not mime.startswith("audio/"):
+            return _json({"error": "mime must be audio/*"}, status=400)
+        url = self._save_audio(mime, str(body.get("data") or ""))
+        if url is None:
+            return _json({"error": "invalid audio data"}, status=400)
+        message = Message(
+            role="user",
+            content="",
+            attachment={"kind": "voice", "url": url, "text": "语音消息"},
+        )
+        await self._runtime.sessions.append(session, message)
+        return _json({"url": url, "id": message.id, "timestamp": message.timestamp})
 
     async def _delete_session(self, request: web.Request) -> web.Response:
         ok = self._runtime.sessions.delete(request.match_info["sid"])
@@ -211,12 +270,14 @@ class AgentServer:
     # ---- REST: audio ---------------------------------------------------
     async def _audio_file(self, request: web.Request) -> web.Response:
         name = request.match_info["name"]
-        if not name.endswith(".mp3") or ".." in name or "/" in name:
+        ext = name.rsplit(".", 1)[-1] if "." in name else ""
+        if ext not in _AUDIO_CONTENT_TYPES or ".." in name or "/" in name:
             return _json({"error": "not found"}, status=404)
         path = self._audio_dir / name
         if not path.is_file():
             return _json({"error": "not found"}, status=404)
-        return web.FileResponse(path)
+        # serve an explicit audio/* type — the OS mime registry is unreliable
+        return web.FileResponse(path, headers={"Content-Type": _AUDIO_CONTENT_TYPES[ext]})
 
     # ---- OpenAI-compatible endpoint -----------------------------------
     async def _openai_completions(self, request: web.Request) -> web.Response:
@@ -259,6 +320,30 @@ class AgentServer:
 
 
 # ----------------------------------------------------------------------
+# mime -> file extension for stored audio, and ext -> Content-Type for serving
+_AUDIO_EXTS = {
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/webm": "webm",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+}
+_AUDIO_CONTENT_TYPES = {
+    "mp3": "audio/mpeg",
+    "webm": "audio/webm",
+    "wav": "audio/wav",
+    "ogg": "audio/ogg",
+    "m4a": "audio/mp4",
+    "aac": "audio/aac",
+}
+
+# messages can be recalled within this window (WeChat-style)
+RECALL_WINDOW_SECONDS = 180
+
+
 def _json(data: dict, *, status: int = 200) -> web.Response:
     return web.json_response(data, status=status)
 

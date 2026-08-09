@@ -4,6 +4,7 @@ const els = {
   chat: document.getElementById("chat"),
   input: document.getElementById("input"),
   send: document.getElementById("send"),
+  mic: document.getElementById("mic"),
   sessions: document.getElementById("session-list"),
   newChat: document.getElementById("new-chat"),
   status: document.getElementById("status"),
@@ -29,11 +30,15 @@ const authSuffix = TOKEN ? `?token=${encodeURIComponent(TOKEN)}` : "";
 function api(path) { return `${path}${path.includes("?") ? "&" : "?"}token=${encodeURIComponent(TOKEN)}`; }
 
 // bump this when the WebUI logic changes; helps diagnose stale-cache issues
-const APP_VERSION = "v3-persist";
+const APP_VERSION = "v5-voice-recall";
 console.log("[AgentMind] app loaded:", APP_VERSION);
 
+// remember the current session across page refreshes so a reload reopens the
+// same conversation instead of piling up empty "新对话" sessions
+const SESSION_KEY = "agentmind.currentSession";
+
 let ws = null;
-let sessionId = null;
+let sessionId = localStorage.getItem(SESSION_KEY) || null;
 let sessions = [];
 let currentAssistantEl = null;
 let thinkingEl = null;
@@ -73,7 +78,9 @@ function setStatus(state) {
 function handleEvent(event, payload) {
   switch (event) {
     case "welcome":
-      sessionId = payload.session_id;
+      sessionId = payload.session_id || null;
+      if (sessionId) localStorage.setItem(SESSION_KEY, sessionId);
+      else localStorage.removeItem(SESSION_KEY);
       sessions = payload.sessions;
       els.meta.textContent = `model: ${payload.model}`;
       renderSessions();
@@ -112,6 +119,7 @@ function handleEvent(event, payload) {
     case "attachment":
       if (payload.mime && payload.mime.startsWith("audio/")) {
         addVoiceBubble(payload.label || "", payload.mime, payload.url || "");
+        syncMessageIds(); // the bubble is persisted server-side before this event
       }
       break;
     case "approval_request":
@@ -127,6 +135,7 @@ function handleEvent(event, payload) {
       break;
     case "done":
       finalizeAssistant(payload.answer);
+      syncMessageIds();
       refreshSessions();
       break;
     case "error":
@@ -166,6 +175,8 @@ function finalizeAssistant(answer) {
   el.className = "msg assistant";
   el.innerHTML = `<span class="role">AgentMind</span><div class="bubble"></div>`;
   el.querySelector(".bubble").textContent = answer;
+  el.dataset.ts = Date.now() / 1000; // refined by syncMessageIds()
+  attachRecall(el);
   els.chat.appendChild(el);
   scrollToBottom();
 }
@@ -229,16 +240,17 @@ function finalizeSubagent(result, success) {
 /* ---------------- Voice bubble (WeChat style) ---------------- */
 let currentVoice = null;
 
-function addVoiceBubble(label, mime, url) {
+function addVoiceBubble(label, mime, url, role = "assistant") {
   const el = document.createElement("div");
-  el.className = "msg assistant";
+  el.className = `msg ${role}`;
   el.innerHTML = `
-    <span class="role">AgentMind · 语音</span>
+    <span class="role">${role === "user" ? "你 · 语音" : "AgentMind · 语音"}</span>
     <div class="voice-bubble" data-src="${url}${TOKEN ? (url.includes("?") ? "&" : "?") + "token=" + encodeURIComponent(TOKEN) : ""}" title="${escapeHtml(label)}">
       <span class="vb-play">▶</span>
       <span class="vb-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
       <span class="vb-duration">0:00</span>
     </div>`;
+  attachRecall(el);
   els.chat.appendChild(el);
   const bubble = el.querySelector(".voice-bubble");
   bubble.onclick = () => toggleVoice(bubble);
@@ -280,6 +292,57 @@ function fmtDuration(secs) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/* ---------------- Recall (撤回, 3-minute window) ---------------- */
+const RECALL_WINDOW = 180; // seconds — must match the server
+
+function attachRecall(msgEl) {
+  const btn = document.createElement("span");
+  btn.className = "recall-btn hidden";
+  btn.textContent = "撤回";
+  btn.onclick = (e) => { e.stopPropagation(); recallMessage(msgEl); };
+  msgEl.appendChild(btn);
+}
+
+// show the recall button only for messages still inside the window
+els.chat.addEventListener("mouseover", (e) => {
+  const msg = e.target.closest(".msg");
+  if (!msg) return;
+  const btn = msg.querySelector(".recall-btn");
+  if (!btn) return;
+  const age = Date.now() / 1000 - (parseFloat(msg.dataset.ts) || 0);
+  btn.classList.toggle("hidden", !msg.dataset.mid || age > RECALL_WINDOW);
+});
+
+async function recallMessage(msgEl) {
+  const mid = msgEl.dataset.mid;
+  if (!mid || !sessionId) return;
+  if (!confirm("撤回这条消息？")) return;
+  const res = await fetch(api(`/api/sessions/${sessionId}/messages/${mid}`), { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    alert(err.error || "撤回失败");
+    return;
+  }
+  await renderHistory();
+  refreshSessions();
+}
+
+// live-rendered messages lack server ids; fetch history and assign them in
+// order so recall works without a page refresh
+async function syncMessageIds() {
+  if (!sessionId) return;
+  try {
+    const res = await fetch(api(`/api/sessions/${sessionId}/messages`));
+    const { messages } = await res.json();
+    const domMsgs = [...els.chat.querySelectorAll(".msg")];
+    if (domMsgs.length !== messages.length) return; // next render will fix it
+    domMsgs.forEach((el, i) => {
+      el.dataset.mid = messages[i].id || "";
+      el.dataset.ts = messages[i].timestamp || 0;
+    });
+  } catch (e) { /* ignore */ }
+}
+
 /* ---------------- Approval ---------------- */
 function showNextApproval() {
   if (currentApproval) return;
@@ -306,8 +369,17 @@ function renderSessions() {
   els.sessions.innerHTML = "";
   for (const s of sessions) {
     const li = document.createElement("li");
-    li.textContent = `${s.title} (${s.message_count})`;
     li.className = s.id === sessionId ? "active" : "";
+    const title = document.createElement("span");
+    title.className = "session-title";
+    title.textContent = `${s.title} (${s.message_count})`;
+    const del = document.createElement("span");
+    del.className = "session-del";
+    del.textContent = "✕";
+    del.title = "删除会话";
+    del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
+    li.appendChild(title);
+    li.appendChild(del);
     li.onclick = () => switchSession(s.id);
     els.sessions.appendChild(li);
   }
@@ -316,8 +388,23 @@ function renderSessions() {
   els.accessSelect.value = cur && cur.access_mode ? cur.access_mode : "restricted";
 }
 
+async function deleteSession(id) {
+  if (!confirm("确定删除这个会话？此操作不可恢复。")) return;
+  await fetch(api(`/api/sessions/${id}`), { method: "DELETE" });
+  if (sessionId === id) {
+    sessionId = null;
+    localStorage.removeItem(SESSION_KEY);
+    els.chat.innerHTML = "";
+    currentAssistantEl = null;
+    needsHistoryRender = false; // chat already cleared; the welcome must not re-render
+  }
+  // refresh the sidebar from the server's authoritative list
+  ws.send(JSON.stringify({ type: "hello", session_id: sessionId }));
+}
+
 function switchSession(id) {
   sessionId = id;
+  localStorage.setItem(SESSION_KEY, id);
   needsHistoryRender = false; // we render right here; the welcome must not wipe it again
   ws.send(JSON.stringify({ type: "hello", session_id: id }));
   renderSessions();
@@ -334,20 +421,31 @@ async function renderHistory() {
       const res = await fetch(api(`/api/sessions/${sessionId}/messages`));
       const { messages } = await res.json();
     for (const m of messages) {
+      let el = null;
       if (m.attachment) {
-        addVoiceBubble(m.attachment.text || "", "audio/mpeg", m.attachment.url);
+        const bubble = addVoiceBubble(
+          m.attachment.text || "", "audio/mpeg", m.attachment.url,
+          m.role === "user" ? "user" : "assistant",
+        );
+        el = bubble.closest(".msg");
       } else if (m.role === "user") {
-        const el = document.createElement("div");
+        el = document.createElement("div");
         el.className = "msg user";
         el.innerHTML = `<span class="role">你</span><div class="bubble"></div>`;
         el.querySelector(".bubble").textContent = m.content;
+        attachRecall(el);
         els.chat.appendChild(el);
       } else if (m.role === "assistant") {
-        const el = document.createElement("div");
+        el = document.createElement("div");
         el.className = "msg assistant";
         el.innerHTML = `<span class="role">AgentMind</span><div class="bubble"></div>`;
         el.querySelector(".bubble").textContent = m.content;
+        attachRecall(el);
         els.chat.appendChild(el);
+      }
+      if (el) {
+        el.dataset.mid = m.id || "";
+        el.dataset.ts = m.timestamp || 0;
       }
     }
   } catch (e) { /* ignore */ }
@@ -365,12 +463,88 @@ function send() {
   el.className = "msg user";
   el.innerHTML = `<span class="role">你</span><div class="bubble"></div>`;
   el.querySelector(".bubble").textContent = text;
+  el.dataset.ts = Date.now() / 1000; // id assigned by syncMessageIds() on "done"
+  attachRecall(el);
   els.chat.appendChild(el);
 
   els.input.value = "";
   autoResize();
   ws.send(JSON.stringify({ type: "chat", text }));
   scrollToBottom();
+}
+
+/* ---------------- Voice recording ---------------- */
+let recorder = null;
+let recChunks = [];
+let recStream = null;
+
+els.mic.onclick = async () => {
+  if (recorder) { recorder.stop(); return; }
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    alert("当前浏览器不支持录音");
+    return;
+  }
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    alert("无法访问麦克风，请检查浏览器权限");
+    return;
+  }
+  recChunks = [];
+  recorder = new MediaRecorder(recStream);
+  const mime = recorder.mimeType || "audio/webm";
+  recorder.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+  recorder.onstop = async () => {
+    recStream.getTracks().forEach((t) => t.stop());
+    recStream = null;
+    const blob = new Blob(recChunks, { type: mime });
+    recorder = null;
+    els.mic.classList.remove("recording");
+    await sendVoice(blob, mime);
+  };
+  recorder.start();
+  els.mic.classList.add("recording");
+};
+
+async function sendVoice(blob, mime) {
+  try {
+    if (!sessionId) await createSession();
+    if (!sessionId) return;
+    const data = await blobToBase64(blob);
+    const res = await fetch(api(`/api/sessions/${sessionId}/voice`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mime, data }),
+    });
+    if (!res.ok) { alert("语音发送失败"); return; }
+    const msg = await res.json();
+    const bubble = addVoiceBubble("语音消息", mime, msg.url, "user");
+    const msgEl = bubble.closest(".msg");
+    msgEl.dataset.mid = msg.id;
+    msgEl.dataset.ts = msg.timestamp;
+    refreshSessions();
+  } catch (e) {
+    alert("语音发送失败");
+  }
+}
+
+// create a real session on demand (voice sent into a fresh "新对话")
+async function createSession() {
+  const res = await fetch(api("/api/sessions"), { method: "POST" });
+  const { id } = await res.json();
+  sessionId = id;
+  localStorage.setItem(SESSION_KEY, id);
+  needsHistoryRender = false; // chat is empty; the welcome must not re-render
+  ws.send(JSON.stringify({ type: "hello", session_id: id })); // bind ws + refresh sidebar
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",", 2)[1] || "");
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
 }
 
 function autoResize() {
@@ -420,6 +594,7 @@ els.approvalAllow.onclick = () => respondApproval(true);
 els.approvalDeny.onclick = () => respondApproval(false);
 els.newChat.onclick = () => {
   sessionId = null;
+  localStorage.removeItem(SESSION_KEY);
   needsHistoryRender = false; // chat already cleared below; welcome must not re-render
   els.chat.innerHTML = "";
   els.sessionName.textContent = "新对话";

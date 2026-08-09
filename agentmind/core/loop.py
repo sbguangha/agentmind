@@ -12,6 +12,7 @@ processed sequentially so context never interleaves.
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from typing import Awaitable
 
@@ -43,6 +44,7 @@ class AgentLoop:
         compressor: Compressor | None = None,
         consolidator: MemoryConsolidator | None = None,
         scope_resolver: WorkspaceScopeResolver | None = None,
+        auto_voice: Callable[[str, EmitFn], Awaitable[None]] | None = None,
     ) -> None:
         self._bus = bus
         self._runner = runner
@@ -52,6 +54,7 @@ class AgentLoop:
         self._compressor = compressor
         self._consolidator = consolidator
         self._scope_resolver = scope_resolver
+        self._auto_voice = auto_voice
         self._locks: dict[str, asyncio.Lock] = {}
         self._stop = asyncio.Event()
 
@@ -74,8 +77,12 @@ class AgentLoop:
     async def _handle(self, msg: InboundMessage) -> None:
         async with self._lock_for(msg.session_id):
             session = self._sessions.get_or_create(msg.session_id)
+            voice_emitted = False  # did this turn already produce a voice bubble?
 
             async def emit(event: str, payload: dict) -> None:
+                nonlocal voice_emitted
+                if event == "attachment" and str(payload.get("mime", "")).startswith("audio/"):
+                    voice_emitted = True
                 await self._bus.publish_outbound(
                     OutboundMessage(session_id=msg.session_id, event=event, payload=payload)
                 )
@@ -101,12 +108,32 @@ class AgentLoop:
                         reset_scope(scope_token)
                 await self._persist_turn(session, msg.text, answer)
                 await emit("done", {"answer": answer})
+                # every answer gets a voice message — unless the model already
+                # spoke this turn (e.g. user asked "用语音回答我")
+                if self._auto_voice is not None and answer.strip() and not voice_emitted:
+                    try:
+                        await self._auto_voice(answer, emit)
+                    except Exception:  # noqa: BLE001 - voice must never break the loop
+                        pass
             except Exception as exc:  # noqa: BLE001 - surface failures to the UI
                 await emit("error", {"message": str(exc)})
 
     async def _persist_turn(self, session, user_text: str, answer: str) -> None:
         """Save history (short-term) and consolidate long-term memory."""
-        await self._sessions.append(session, Message(role="user", content=user_text))
+        # voice attachments may already have been persisted mid-turn (fanout);
+        # keep chronological order: the user's question comes before them
+        user_msg = Message(role="user", content=user_text)
+        idx = len(session.messages)
+        while idx > 0 and session.messages[idx - 1].attachment is not None:
+            idx -= 1
+        if idx == len(session.messages):
+            await self._sessions.append(session, user_msg)
+        else:
+            session.messages.insert(idx, user_msg)
+            session.updated_at = time.time()
+            if session.title == "新对话":
+                session.title = user_text[:30].replace("\n", " ")
+            await self._sessions.save(session)
         await self._sessions.append(session, Message(role="assistant", content=answer))
 
         if self._settings.memory_auto_store and answer.strip():
