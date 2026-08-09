@@ -28,16 +28,15 @@ class ServiceSessionTracker:
         return STATE_LABELS.get(state or "new", state or "待处理")
 
     async def note_activity(self, session_id: str) -> str | None:
-        """Any service tool use moves a session into 处理中 (no-op on terminal states)."""
+        """Move a session into 处理中; returns the new state only on a transition."""
         session = self._sessions.get(session_id)
-        if session is None:
+        if session is None or session.service_state in _TERMINAL:
             return None
-        if session.service_state in _TERMINAL:
-            return session.service_state
         if session.service_state != "processing":
             session.service_state = "processing"
             await self._sessions.save(session)
-        return session.service_state
+            return "processing"
+        return None  # already processing — no transition, no event
 
     async def escalate(self, session_id: str, reason: str, now: datetime | None = None) -> dict:
         session = self._sessions.get(session_id)

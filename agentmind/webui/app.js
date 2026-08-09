@@ -147,6 +147,7 @@ function handleEvent(event, payload) {
       break;
     case "service_state":
       updateServiceBadge(payload.state, payload.label);
+      addServiceNotice(payload.state, payload.label, payload.note || "");
       break;
   }
 }
@@ -157,6 +158,14 @@ function updateServiceBadge(state, label) {
   if (!state) { els.serviceBadge.classList.add("hidden"); return; }
   els.serviceBadge.className = "service-badge " + state;
   els.serviceBadge.textContent = "客服 · " + (label || SERVICE_LABELS[state] || state);
+}
+
+function addServiceNotice(state, label, note) {
+  const el = document.createElement("div");
+  el.className = "service-notice " + (state || "");
+  el.textContent = (label || SERVICE_LABELS[state] || state) + (note ? " · " + note : "");
+  els.chat.appendChild(el);
+  scrollToBottom();
 }
 
 /* ---------------- DOM helpers ---------------- */
@@ -382,6 +391,9 @@ function renderSessions() {
   for (const s of sessions) {
     const li = document.createElement("li");
     li.className = s.id === sessionId ? "active" : "";
+    const dot = document.createElement("span");
+    dot.className = "sess-dot " + (s.service_state || "new");
+    dot.title = "客服状态：" + (SERVICE_LABELS[s.service_state] || "待处理");
     const title = document.createElement("span");
     title.className = "session-title";
     title.textContent = `${s.title} (${s.message_count})`;
@@ -390,6 +402,7 @@ function renderSessions() {
     del.textContent = "✕";
     del.title = "删除会话";
     del.onclick = (e) => { e.stopPropagation(); deleteSession(s.id); };
+    li.appendChild(dot);
     li.appendChild(title);
     li.appendChild(del);
     li.onclick = () => switchSession(s.id);

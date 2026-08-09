@@ -101,7 +101,9 @@ class AfterSalesCheckTool(Tool):
 
     async def run(self, order_id: str, reason: str = "", **kwargs) -> ToolResult:
         if self._tracker is not None and current_session_id():
-            await self._tracker.note_activity(current_session_id())
+            changed = await self._tracker.note_activity(current_session_id())
+            if changed:
+                await self._emit_service_state("processing", "售后处理中")
         order_id = order_id.strip()
         verdict = evaluate_after_sales(self._api, order_id, reason or "")
         output = verdict.to_text(order_id)
@@ -111,6 +113,11 @@ class AfterSalesCheckTool(Tool):
 
             output += profile_hint(self._api, order["user"])
         return ToolResult(output=output)
+
+    async def _emit_service_state(self, state: str, label: str, note: str = "") -> None:
+        emit = current_emit()
+        if emit is not None:
+            await emit("service_state", {"state": state, "label": label, "note": note})
 
 
 class AfterSalesApplyTool(Tool):
@@ -141,7 +148,9 @@ class AfterSalesApplyTool(Tool):
 
         record = self._api.create_after_sales(order_id, reason or "", verdict.refund_amount, verdict.policy)
         if self._tracker is not None and current_session_id():
-            await self._tracker.note_activity(current_session_id())
+            changed = await self._tracker.note_activity(current_session_id())
+            if changed:
+                await self._emit_service_state("processing", "售后处理中")
         return ToolResult(
             output=(
                 f"✅ 售后申请已提交\n"
@@ -201,7 +210,7 @@ class EscalateHumanTool(Tool):
             return ToolResult(output=result["error"], is_error=True)
         emit = current_emit()
         if emit is not None:
-            await emit("service_state", {"state": "escalated", "label": "已转人工", "note": reason})
+            await emit("service_state", {"state": "escalated", "label": "已转人工", "note": f"工单号 {result['ticket_id']}"})
         return ToolResult(
             output=(
                 f"✅ 已转接人工客服\n"
